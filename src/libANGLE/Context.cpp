@@ -3568,6 +3568,11 @@ void Context::initCaps()
         mState.mCaps.maxSmoothLineWidth            = 1.0f;
     }
 
+    if (getClientType() == EGL_OPENGL_API || getClientVersion() >= Version(3, 0))
+    {
+        mState.mCaps.maxClipDistances = 1;
+    }
+
 #if 0
 // This logging can generate a lot of spam in test suites that create many contexts
 #    define ANGLE_LOG_LIMITED_CAP(cap, limit)                                               \

@@ -464,6 +464,7 @@ void State::initialize(Context *context)
     {
         mGLES1State.initialize(context, this);
     }
+    mClipPlaneEnabled.resize(caps.maxClipDistances, false);
 }
 
 void State::reset(const Context *context)
@@ -999,7 +1000,12 @@ void State::setEnableFeature(GLenum feature, bool enabled)
         case GL_COLOR_MATERIAL:
             mGLES1State.mColorMaterialEnabled = enabled;
             break;
-        case GL_CLIP_PLANE0:
+        case GL_CLIP_DISTANCE0_APPLE:
+            if (mClientVersion < Version(2, 0))
+                mGLES1State.mClipPlanes[feature - GL_CLIP_DISTANCE0_APPLE].enabled = enabled;
+            else
+                mClipPlaneEnabled[feature - GL_CLIP_DISTANCE0_APPLE] = enabled;
+            break;
         case GL_CLIP_PLANE1:
         case GL_CLIP_PLANE2:
         case GL_CLIP_PLANE3:
@@ -1110,7 +1116,10 @@ bool State::getEnableFeature(GLenum feature) const
             return mGLES1State.mRescaleNormalEnabled;
         case GL_COLOR_MATERIAL:
             return mGLES1State.mColorMaterialEnabled;
-        case GL_CLIP_PLANE0:
+        case GL_CLIP_DISTANCE0_APPLE:
+            if (mClientVersion >= Version(3, 0))
+                return mClipPlaneEnabled[feature - GL_CLIP_DISTANCE0_APPLE];
+            return mGLES1State.mClipPlanes[feature - GL_CLIP_DISTANCE0_APPLE].enabled;
         case GL_CLIP_PLANE1:
         case GL_CLIP_PLANE2:
         case GL_CLIP_PLANE3:

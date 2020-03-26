@@ -841,6 +841,9 @@ bool ValidCap(const Context *context, GLenum cap, bool queryOnly)
         case GL_ROBUST_RESOURCE_INITIALIZATION_ANGLE:
             return queryOnly && context->getExtensions().robustResourceInitialization;
 
+        case GL_CLIP_DISTANCE0_APPLE:
+            return context->getClientVersion() < Version(2, 0) ||
+                   context->getClientVersion() >= Version(3, 0) && context->getExtensions().clipDistance;
         // GLES1 emulation: GLES1-specific caps
         case GL_ALPHA_TEST:
         case GL_VERTEX_ARRAY:
@@ -860,7 +863,6 @@ bool ValidCap(const Context *context, GLenum cap, bool queryOnly)
         case GL_NORMALIZE:
         case GL_RESCALE_NORMAL:
         case GL_COLOR_MATERIAL:
-        case GL_CLIP_PLANE0:
         case GL_CLIP_PLANE1:
         case GL_CLIP_PLANE2:
         case GL_CLIP_PLANE3:
