@@ -1256,6 +1256,11 @@ Caps GenerateMinimumCaps(const Version &clientVersion, const Extensions &extensi
         caps.maxCombinedTextureImageUnits = 64;
     }
 
+    if (extensions.clipDistance)
+    {
+        caps.maxClipDistances = 4;
+    }
+
     for (ShaderType shaderType : AllShaderTypes())
     {
         caps.maxCombinedShaderUniformComponents[shaderType] =

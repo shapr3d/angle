@@ -87,6 +87,7 @@ Compiler::Compiler(rx::GLImplFactory *implFactory, const State &state)
     mResources.MaxTextureImageUnits         = caps.maxShaderTextureImageUnits[ShaderType::Fragment];
     mResources.MaxFragmentUniformVectors    = caps.maxFragmentUniformVectors;
     mResources.MaxDrawBuffers               = caps.maxDrawBuffers;
+    mResources.MaxClipDistances             = caps.maxClipDistances;
     mResources.OES_standard_derivatives     = extensions.standardDerivativesOES;
     mResources.EXT_draw_buffers             = extensions.drawBuffers;
     mResources.EXT_shader_texture_lod       = extensions.shaderTextureLOD;

@@ -1029,6 +1029,7 @@ void TCompiler::setResourceString()
         << ":MaxTextureImageUnits:" << mResources.MaxTextureImageUnits
         << ":MaxFragmentUniformVectors:" << mResources.MaxFragmentUniformVectors
         << ":MaxDrawBuffers:" << mResources.MaxDrawBuffers
+        << ":MaxClipDistances:" << mResources.MaxClipDistances
         << ":OES_standard_derivatives:" << mResources.OES_standard_derivatives
         << ":OES_EGL_image_external:" << mResources.OES_EGL_image_external
         << ":OES_EGL_image_external_essl3:" << mResources.OES_EGL_image_external_essl3

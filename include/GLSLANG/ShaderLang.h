@@ -362,6 +362,7 @@ struct ShBuiltInResources
     int MaxTextureImageUnits;
     int MaxFragmentUniformVectors;
     int MaxDrawBuffers;
+    int MaxClipDistances;
 
     // Extensions.
     // Set to 1 to enable the extension, else 0.
