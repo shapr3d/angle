@@ -1258,7 +1258,7 @@ Caps GenerateMinimumCaps(const Version &clientVersion, const Extensions &extensi
 
     if (extensions.clipDistance)
     {
-        caps.maxClipDistances = 4;
+        caps.maxClipDistances = 1;
     }
 
     for (ShaderType shaderType : AllShaderTypes())

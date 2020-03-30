@@ -3573,7 +3573,7 @@ void Context::initCaps()
 
     if (getClientType() == EGL_OPENGL_API || getClientVersion() >= Version(3, 0))
     {
-        mState.mCaps.maxClipDistances = 4;
+        mState.mCaps.maxClipDistances = 8;
     }
 
 #if 0
