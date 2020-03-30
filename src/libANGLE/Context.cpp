@@ -3571,7 +3571,7 @@ void Context::initCaps()
         mState.mCaps.maxSmoothLineWidth            = 1.0f;
     }
 
-    if (getClientType() == EGL_OPENGL_API || getClientVersion() >= Version(3, 0))
+    if (getClientType() == EGL_OPENGL_API || getClientVersion() >= Version(2, 0))
     {
         mState.mCaps.maxClipDistances = 8;
     }

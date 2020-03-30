@@ -462,9 +462,9 @@ void DynamicHLSL::generateVaryingLinkHLSL(const VaryingPacking &varyingPacking,
         }
         const auto numComponents = std::min(4, numClipDistancesToDeclare);
         hlslStream << "    float";
-        if (numComponents > 1)
-            hlslStream << numComponents;
         hlslStream << " gl_ClipDistance" << builtin.index;
+        if (numComponents > 1)
+            hlslStream << '[' << numComponents << ']';
         hlslStream << " : " << builtin.str() << ";\n";
     }
 
@@ -617,22 +617,12 @@ void DynamicHLSL::generateShaderLinkHLSL(const gl::Caps &caps,
     for (int i = 0; i < usedClipDistances.size(); i++)
     {
         const auto semanticIdx  = i / 4;
+        const auto idxInOutput  = i % 4;
         const auto clipPlaneIdx = usedClipDistances[i];
-        vertexGenerateOutput << "    output.gl_ClipDistance" << semanticIdx << '.';
-        switch (i % 4)
+        vertexGenerateOutput << "    output.gl_ClipDistance" << semanticIdx;
+        if (usedClipDistances.size() - semanticIdx * 4 > 1)
         {
-            case 0:
-                vertexGenerateOutput << 'x';
-                break;
-            case 1:
-                vertexGenerateOutput << 'y';
-                break;
-            case 2:
-                vertexGenerateOutput << 'z';
-                break;
-            case 3:
-                vertexGenerateOutput << 'w';
-                break;
+            vertexGenerateOutput << '[' << idxInOutput << ']';
         }
         vertexGenerateOutput << " = gl_ClipDistance[" << clipPlaneIdx << "];\n";
     }
@@ -1445,8 +1435,7 @@ void BuiltinVaryingsD3D::updateBuiltins(gl::ShaderType shaderType,
         builtins->glPosition.enable(userSemantic, reservedSemanticIndex++);
     }
 
-    if (metadata.getRendererMajorShaderModel() >= 4 &&
-        (shaderType == gl::ShaderType::Vertex || shaderType == gl::ShaderType::Geometry))
+    if (metadata.getRendererMajorShaderModel() >= 4 && shaderType == gl::ShaderType::Vertex)
     {
         // optimization: exclude these from pixel shader
         const auto numClipDistancesUsed = metadata.usedClipDistances().size();
