@@ -609,6 +609,18 @@ const std::set<std::string> *GetUsedImage2DFunctionNames(const ShHandle handle)
 #endif  // ANGLE_ENABLE_HLSL
 }
 
+const std::vector<int> *GetUsedClipDistances(const ShHandle handle)
+{
+#ifdef ANGLE_ENABLE_HLSL
+    TranslatorHLSL *translator = GetTranslatorHLSLFromHandle(handle);
+    ASSERT(translator);
+
+    return translator->getUsedClipDistances();
+#else
+    return nullptr;
+#endif  // ANGLE_ENABLE_HLSL
+}
+
 bool HasValidGeometryShaderInputPrimitiveType(const ShHandle handle)
 {
     ASSERT(handle);
