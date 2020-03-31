@@ -1870,6 +1870,8 @@ void Context::getIntegervImpl(GLenum pname, GLint *params)
             *params = mState.mCaps.maxLights;
             break;
         case GL_MAX_CLIP_PLANES:
+            static_assert(GL_MAX_CLIP_PLANES == GL_MAX_CLIP_DISTANCES_APPLE,
+                          "GL_APPLE_clip_distance extension is broken");
             if (mState.getClientVersion() < Version(2, 0))
                 *params = mState.mCaps.maxClipPlanes;
             else

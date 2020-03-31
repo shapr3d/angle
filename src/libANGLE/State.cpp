@@ -1006,6 +1006,8 @@ void State::setEnableFeature(GLenum feature, bool enabled)
         case GL_CLIP_DISTANCE3_APPLE:
         case GL_CLIP_DISTANCE4_APPLE:
         case GL_CLIP_DISTANCE5_APPLE:
+            static_assert(GL_CLIP_PLANE0 == GL_CLIP_DISTANCE0_APPLE,
+                          "GL_APPLE_clip_distance extension is broken");
             if (mClientVersion < Version(2, 0))
                 mGLES1State.mClipPlanes[feature - GL_CLIP_DISTANCE0_APPLE].enabled = enabled;
             else
