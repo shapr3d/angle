@@ -1870,10 +1870,10 @@ void Context::getIntegervImpl(GLenum pname, GLint *params)
             *params = mState.mCaps.maxLights;
             break;
         case GL_MAX_CLIP_PLANES:
-            if (mState.getClientVersion() >= Version(3, 0))
-                *params = mState.mCaps.maxClipDistances;
-            else
+            if (mState.getClientVersion() < Version(2, 0))
                 *params = mState.mCaps.maxClipPlanes;
+            else
+                *params = mState.mCaps.maxClipDistances;
             break;
         // GLES1 emulation: Vertex attribute queries
         case GL_VERTEX_ARRAY_BUFFER_BINDING:

@@ -848,11 +848,10 @@ bool ValidCap(const Context *context, GLenum cap, bool queryOnly)
         case GL_CLIP_DISTANCE4_APPLE:
         case GL_CLIP_DISTANCE5_APPLE:
             return context->getClientVersion() < Version(2, 0) ||
-                   context->getClientVersion() >= Version(3, 0) &&
-                       context->getExtensions().clipDistance;
+                   context->getExtensions().clipDistance;
         case GL_CLIP_DISTANCE6_APPLE:
         case GL_CLIP_DISTANCE7_APPLE:
-            return context->getClientVersion() >= Version(3, 0) &&
+            return context->getClientVersion() >= Version(2, 0) &&
                    context->getExtensions().clipDistance;
         // GLES1 emulation: GLES1-specific caps
         case GL_ALPHA_TEST:
