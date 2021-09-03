@@ -1125,28 +1125,28 @@ egl::ConfigSet Renderer11::generateConfigs()
 
     // 32-bit supported formats
     colorBufferFormats.push_back(GL_BGRA8_EXT);
-    colorBufferFormats.push_back(GL_RGBA8_OES);
+    // colorBufferFormats.push_back(GL_RGBA8_OES);
 
-    // 24-bit supported formats
-    colorBufferFormats.push_back(GL_RGB8_OES);
+    //// 24-bit supported formats
+    // colorBufferFormats.push_back(GL_RGB8_OES);
 
-    if (mRenderer11DeviceCaps.featureLevel >= D3D_FEATURE_LEVEL_10_0)
-    {
-        // Additional high bit depth formats added in D3D 10.0
-        // https://msdn.microsoft.com/en-us/library/windows/desktop/bb173064.aspx
-        colorBufferFormats.push_back(GL_RGBA16F);
-        colorBufferFormats.push_back(GL_RGB10_A2);
-    }
+    // if (mRenderer11DeviceCaps.featureLevel >= D3D_FEATURE_LEVEL_10_0)
+    //{
+    //    // Additional high bit depth formats added in D3D 10.0
+    //    // https://msdn.microsoft.com/en-us/library/windows/desktop/bb173064.aspx
+    //    colorBufferFormats.push_back(GL_RGBA16F);
+    //    colorBufferFormats.push_back(GL_RGB10_A2);
+    //}
 
-    if (!mPresentPathFastEnabled)
-    {
-        // 16-bit supported formats
-        // These aren't valid D3D11 swapchain formats, so don't expose them as configs
-        // if present path fast is active
-        colorBufferFormats.push_back(GL_RGBA4);
-        colorBufferFormats.push_back(GL_RGB5_A1);
-        colorBufferFormats.push_back(GL_RGB565);
-    }
+    // if (!mPresentPathFastEnabled)
+    //{
+    //    // 16-bit supported formats
+    //    // These aren't valid D3D11 swapchain formats, so don't expose them as configs
+    //    // if present path fast is active
+    //    colorBufferFormats.push_back(GL_RGBA4);
+    //    colorBufferFormats.push_back(GL_RGB5_A1);
+    //    colorBufferFormats.push_back(GL_RGB565);
+    //}
 
     static const GLenum depthStencilBufferFormats[] = {
         GL_NONE,           GL_DEPTH24_STENCIL8_OES, GL_DEPTH_COMPONENT24, GL_DEPTH_COMPONENT16,
