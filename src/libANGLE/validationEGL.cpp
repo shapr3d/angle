@@ -207,6 +207,7 @@ bool ValidateConfigAttribute(const ValidationContext *val,
         case EGL_MAX_PBUFFER_WIDTH:
         case EGL_MAX_PBUFFER_HEIGHT:
         case EGL_MAX_PBUFFER_PIXELS:
+        case EGL_TEXTURE_SWIZZLING_TYPE:
             break;
 
         case EGL_OPTIMAL_SURFACE_ORIENTATION_ANGLE:
@@ -360,6 +361,20 @@ bool ValidateConfigAttributeValue(const ValidationContext *val,
                 default:
                     val->setError(EGL_BAD_ATTRIBUTE,
                                   "EGL_COLOR_COMPONENT_TYPE_EXT invalid attribute: 0x%X",
+                                  static_cast<uint32_t>(value));
+                    return false;
+            }
+            break;
+        case EGL_TEXTURE_SWIZZLING_TYPE:
+            switch (value)
+            {
+                case EGL_TEXTURE_SWIZZLING_BGRA:
+                case EGL_TEXTURE_SWIZZLING_RGBA:
+                case EGL_DONT_CARE:
+                    break;
+                default:
+                    val->setError(EGL_BAD_ATTRIBUTE,
+                                  "EGL_TEXTURE_SWIZZLING_TYPE invalid attribute: 0x%X",
                                   static_cast<uint32_t>(value));
                     return false;
             }

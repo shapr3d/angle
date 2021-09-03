@@ -372,6 +372,17 @@ std::vector<const Config *> ConfigSet::filter(const AttributeMap &attributeMap) 
                 case EGL_Y_INVERTED_NOK:
                     match = config.yInverted == static_cast<EGLBoolean>(attributeValue);
                     break;
+                case EGL_TEXTURE_SWIZZLING_TYPE:
+                    switch (attributeValue)
+                    {
+                        case EGL_TEXTURE_SWIZZLING_BGRA:
+                            match = config.renderTargetFormat == GL_BGRA8_EXT;
+                            break;
+                        case EGL_TEXTURE_SWIZZLING_RGBA:
+                            match = config.renderTargetFormat != GL_BGRA8_EXT;
+                            break;
+                    }
+                    break;
                 default:
                     UNREACHABLE();
             }
