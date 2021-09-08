@@ -32,6 +32,8 @@ namespace rx
 {
 bool SwapChainNativeWindow::initialize(EGLNativeWindowType window, IPropertySet *propertySet)
 {
+    mSupportsSwapChainResize = false;
+
     ComPtr<IPropertySet> props = propertySet;
     ComPtr<IInspectable> win   = window;
     SIZE swapChainSize         = {};
