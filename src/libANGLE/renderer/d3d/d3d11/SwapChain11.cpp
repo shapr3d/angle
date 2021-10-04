@@ -503,7 +503,7 @@ EGLint SwapChain11::resize(DisplayD3D *displayD3D, EGLint backbufferWidth, EGLin
     }
 
     hr = mSwapChain->ResizeBuffers(desc.BufferCount, backbufferWidth, backbufferHeight,
-                                   getSwapChainNativeFormat(), 0);
+                                   getSwapChainNativeFormat(), desc.Flags);
 
     if (FAILED(hr))
     {
