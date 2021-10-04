@@ -534,15 +534,21 @@ EGLint SwapChain11::resize(DisplayD3D *displayD3D, EGLint backbufferWidth, EGLin
         mBackBufferTexture.set(backbufferTexture, format);
         mBackBufferTexture.setDebugName("BackBufferTexture");
 
-        angle::Result result = mRenderer->allocateResourceNoDesc(
-            displayD3D, mBackBufferTexture.get(), &mBackBufferRTView);
-        ASSERT(result != angle::Result::Stop);
-        mBackBufferRTView.setDebugName("BackBufferRTV");
+        if (desc.BufferUsage & DXGI_USAGE_RENDER_TARGET_OUTPUT)
+        {
+            angle::Result result = mRenderer->allocateResourceNoDesc(
+                displayD3D, mBackBufferTexture.get(), &mBackBufferRTView);
+            ASSERT(result != angle::Result::Stop);
+            mBackBufferRTView.setDebugName("BackBufferRTV");
+        }
 
-        result = mRenderer->allocateResourceNoDesc(displayD3D, mBackBufferTexture.get(),
-                                                   &mBackBufferSRView);
-        ASSERT(result != angle::Result::Stop);
-        mBackBufferSRView.setDebugName("BackBufferSRV");
+        if (desc.BufferUsage & DXGI_USAGE_SHADER_INPUT)
+        {
+            angle::Result result = mRenderer->allocateResourceNoDesc(
+                displayD3D, mBackBufferTexture.get(), &mBackBufferSRView);
+            ASSERT(result != angle::Result::Stop);
+            mBackBufferSRView.setDebugName("BackBufferSRV");
+        }
     }
 
     mFirstSwap = true;
@@ -649,6 +655,15 @@ EGLint SwapChain11::reset(DisplayD3D *displayD3D,
             mSwapChain1 = d3d11::DynamicCastComObject<IDXGISwapChain1>(mSwapChain);
         }
 
+        DXGI_SWAP_CHAIN_DESC swapChainDesc;
+        hr = mSwapChain->GetDesc(&swapChainDesc);
+        if (FAILED(hr))
+        {
+            ERR() << "Error reading swap chain description, " << gl::FmtHR(hr);
+            release();
+            return EGL_BAD_ALLOC;
+        }
+
         ID3D11Texture2D *backbufferTex = nullptr;
         hr                             = mSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D),
                                    reinterpret_cast<LPVOID *>(&backbufferTex));
@@ -658,15 +673,21 @@ EGLint SwapChain11::reset(DisplayD3D *displayD3D,
         mBackBufferTexture.set(backbufferTex, format);
         mBackBufferTexture.setDebugName("BackBufferTexture");
 
-        angle::Result result = mRenderer->allocateResourceNoDesc(
-            displayD3D, mBackBufferTexture.get(), &mBackBufferRTView);
-        ASSERT(result != angle::Result::Stop);
-        mBackBufferRTView.setDebugName("BackBufferRTV");
+        if (swapChainDesc.BufferUsage & DXGI_USAGE_RENDER_TARGET_OUTPUT)
+        {
+            angle::Result result = mRenderer->allocateResourceNoDesc(
+                displayD3D, mBackBufferTexture.get(), &mBackBufferRTView);
+            ASSERT(result != angle::Result::Stop);
+            mBackBufferRTView.setDebugName("BackBufferRTV");
+        }
 
-        result = mRenderer->allocateResourceNoDesc(displayD3D, mBackBufferTexture.get(),
-                                                   &mBackBufferSRView);
-        ASSERT(result != angle::Result::Stop);
-        mBackBufferSRView.setDebugName("BackBufferSRV");
+        if (swapChainDesc.BufferUsage & DXGI_USAGE_SHADER_INPUT)
+        {
+            angle::Result result = mRenderer->allocateResourceNoDesc(
+                displayD3D, mBackBufferTexture.get(), &mBackBufferSRView);
+            ASSERT(result != angle::Result::Stop);
+            mBackBufferSRView.setDebugName("BackBufferSRV");
+        }
     }
 
     mFirstSwap = true;
