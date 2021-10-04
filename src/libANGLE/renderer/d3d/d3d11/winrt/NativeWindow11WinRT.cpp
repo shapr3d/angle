@@ -120,10 +120,12 @@ bool NativeWindow11WinRT::IsValidNativeWindow(EGLNativeWindowType window)
     //
     // ICoreWindow
     // ISwapChainPanel
+    // IDXGISwapChain
     // IPropertySet
     //
     // Anything else will be rejected as an invalid IInspectable.
-    return IsCoreWindow(window) || IsSwapChainPanel(window) || IsEGLConfiguredPropertySet(window);
+    return IsCoreWindow(window) || IsSwapChainPanel(window) || IsSwapChain(window) ||
+           IsEGLConfiguredPropertySet(window);
 }
 
 }  // namespace rx
