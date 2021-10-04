@@ -4140,6 +4140,10 @@ void QueryConfigAttrib(const Config *config, EGLint attribute, EGLint *value)
         case EGL_FRAMEBUFFER_TARGET_ANDROID:
             *value = config->framebufferTarget;
             break;
+        case EGL_TEXTURE_SWIZZLING_TYPE:
+            *value = config->renderTargetFormat == GL_BGRA8_EXT ? EGL_TEXTURE_SWIZZLING_BGRA
+                                                                : EGL_TEXTURE_SWIZZLING_RGBA;
+            break;
         default:
             UNREACHABLE();
             break;

@@ -355,6 +355,11 @@ EGLAPI EGLBoolean EGLAPIENTRY eglSwapBuffersWithFrameTokenANGLE(EGLDisplay dpy, 
 #define EGL_EXTERNAL_CONTEXT_SAVE_STATE_ANGLE 0x3490
 #endif /* EGL_ANGLE_external_context_and_surface */
 
+// Shapr3D uses it!
+#define EGL_TEXTURE_SWIZZLING_TYPE 0x35FF
+#define EGL_TEXTURE_SWIZZLING_BGRA 0x35FE
+#define EGL_TEXTURE_SWIZZLING_RGBA 0x35FD
+
 // clang-format on
 
 #endif  // INCLUDE_EGL_EGLEXT_ANGLE_
