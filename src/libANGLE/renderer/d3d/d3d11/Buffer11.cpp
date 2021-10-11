@@ -398,6 +398,10 @@ angle::Result Buffer11::setDataWithUsageFlags(const gl::Context *context,
 {
     if (clientBuffer)
     {
+        // Table 6.3 in specification of EXT_buffer_storage states that
+        // calling BufferStorage() (and as consequence BufferStorageExternal())
+        // modifies the buffer object state such that BUFFER_USAGE is set to
+        // DYNAMIC_DRAW.
         updateD3DBufferUsage(context, gl::BufferUsage::DynamicDraw);
 
         auto *contextD3D     = GetImplAs<ContextD3D>(context);
