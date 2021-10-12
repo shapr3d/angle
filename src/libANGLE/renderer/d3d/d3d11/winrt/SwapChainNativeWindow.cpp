@@ -22,6 +22,17 @@ DXGI_FORMAT GetSwapChainFormat(const ComPtr<IDXGISwapChain> &swapChain)
     }
     return DXGI_FORMAT_UNKNOWN;
 }
+
+HRESULT GetSwapChainSize(const ComPtr<IDXGISwapChain> &swapChain, Size *windowSize)
+{
+    DXGI_SWAP_CHAIN_DESC desc = {};
+    HRESULT result            = swapChain->GetDesc(&desc);
+    if (SUCCEEDED(result))
+    {
+        *windowSize = {(float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height};
+    }
+    return result;
+}
 }  // namespace
 
 namespace rx
@@ -76,16 +87,5 @@ HRESULT SwapChainNativeWindow::createSwapChain(ID3D11Device *device,
 HRESULT SwapChainNativeWindow::scaleSwapChain(const Size &windowSize, const RECT &clientRect)
 {
     return S_OK;
-}
-
-HRESULT GetSwapChainSize(const ComPtr<IDXGISwapChain> &swapChain, Size *windowSize)
-{
-    DXGI_SWAP_CHAIN_DESC desc = {};
-    HRESULT result            = swapChain->GetDesc(&desc);
-    if (SUCCEEDED(result))
-    {
-        *windowSize = {(float)desc.BufferDesc.Width, (float)desc.BufferDesc.Height};
-    }
-    return result;
 }
 }  // namespace rx

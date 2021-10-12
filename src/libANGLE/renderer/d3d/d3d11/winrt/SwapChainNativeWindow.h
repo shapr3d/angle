@@ -35,7 +35,5 @@ class SwapChainNativeWindow : public InspectableNativeWindow,
     ComPtr<IMap<HSTRING, IInspectable *>> mPropertyMap;
     ComPtr<IDXGISwapChain> mSwapChain;
 };
-
-HRESULT GetSwapChainSize(const ComPtr<IDXGISwapChain> &swapChain, Size *windowSize);
 }  // namespace rx
 #endif  // LIBANGLE_RENDERER_D3D_D3D11_WINRT_SWAPCHAINPANELNATIVEWINDOW_H_
