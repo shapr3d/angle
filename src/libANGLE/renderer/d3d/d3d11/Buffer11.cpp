@@ -424,13 +424,7 @@ angle::Result Buffer11::setDataWithUsageFlags(const gl::Context *context,
         }
         SafeRelease(device);
 
-        if (flags & GL_MAP_PERSISTENT_BIT_EXT)
-        {
-            clientBufferPermitsSharedAccess = false;
-        }
-        if ((flags & GL_MAP_READ_BIT) &&
-            !(clientBufferDesc11.Usage == D3D11_USAGE_DYNAMIC &&
-              clientBufferDesc11.CPUAccessFlags & D3D11_CPU_ACCESS_READ))
+        if (flags & (GL_MAP_PERSISTENT_BIT_EXT | GL_MAP_READ_BIT))
         {
             clientBufferPermitsSharedAccess = false;
         }
