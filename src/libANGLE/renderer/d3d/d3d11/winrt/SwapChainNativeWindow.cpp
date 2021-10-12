@@ -8,10 +8,6 @@
 
 #include "libANGLE/renderer/d3d/d3d11/winrt/SwapChainNativeWindow.h"
 
-#include <math.h>
-#include <algorithm>
-
-using namespace ABI::Windows::Foundation::Collections;
 using namespace Microsoft::WRL;
 
 namespace
@@ -33,85 +29,20 @@ namespace rx
 bool SwapChainNativeWindow::initialize(EGLNativeWindowType window, IPropertySet *propertySet)
 {
     mSupportsSwapChainResize = false;
+    mSwapChainScale          = 1.0f;
 
-    ComPtr<IPropertySet> props = propertySet;
-    ComPtr<IInspectable> win   = window;
-    SIZE swapChainSize         = {};
-    HRESULT result             = S_OK;
-
-    // IPropertySet is an optional parameter and can be null.
-    // If one is specified, cache as an IMap and read the properties
-    // used for initial host initialization.
-    if (propertySet)
-    {
-        result = props.As(&mPropertyMap);
-        if (FAILED(result))
-        {
-            return false;
-        }
-
-        // The EGLRenderSurfaceSizeProperty is optional and may be missing. The IPropertySet
-        // was prevalidated to contain the EGLNativeWindowType before being passed to
-        // this host.
-        result = GetOptionalSizePropertyValue(mPropertyMap, EGLRenderSurfaceSizeProperty,
-                                              &swapChainSize, &mSwapChainSizeSpecified);
-        if (FAILED(result))
-        {
-            return false;
-        }
-
-        // The EGLRenderResolutionScaleProperty is optional and may be missing. The IPropertySet
-        // was prevalidated to contain the EGLNativeWindowType before being passed to
-        // this host.
-        result = GetOptionalSinglePropertyValue(mPropertyMap, EGLRenderResolutionScaleProperty,
-                                                &mSwapChainScale, &mSwapChainScaleSpecified);
-        if (FAILED(result))
-        {
-            return false;
-        }
-
-        if (!mSwapChainScaleSpecified)
-        {
-            // Default value for the scale is 1.0f
-            mSwapChainScale = 1.0f;
-        }
-
-        // A EGLRenderSurfaceSizeProperty and a EGLRenderResolutionScaleProperty can't both be
-        // specified
-        if (mSwapChainScaleSpecified && mSwapChainSizeSpecified)
-        {
-            ERR() << "It is invalid to specify both an EGLRenderSurfaceSizeProperty and a "
-                     "EGLRenderResolutionScaleProperty.";
-            return false;
-        }
-    }
+    ComPtr<IInspectable> win = window;
+    HRESULT result           = win.As(&mSwapChain);
 
     if (SUCCEEDED(result))
     {
-        result = win.As(&mSwapChain);
-    }
+        Size swapChainSize;
+        result = GetSwapChainSize(mSwapChain, &swapChainSize);
 
-    if (SUCCEEDED(result))
-    {
-        // If a swapchain size is specfied, then the automatic resize
-        // behaviors implemented by the host should be disabled.  The swapchain
-        // will be still be scaled when being rendered to fit the bounds
-        // of the host.
-        // Scaling of the swapchain output is handled by the EGL client.
-        if (mSwapChainSizeSpecified)
+        if (SUCCEEDED(result))
         {
-            mClientRect = {0, 0, swapChainSize.cx, swapChainSize.cy};
-        }
-        else
-        {
-            Size swapChainPanelSize;
-            result = GetSwapChainSize(mSwapChain, &swapChainPanelSize);
-
-            if (SUCCEEDED(result))
-            {
-                // Update the client rect to account for any swapchain scale factor
-                mClientRect = clientRect(swapChainPanelSize);
-            }
+            // Update the client rect to account for any swapchain scale factor
+            mClientRect = clientRect(swapChainSize);
         }
     }
 
@@ -139,29 +70,7 @@ HRESULT SwapChainNativeWindow::createSwapChain(ID3D11Device *device,
     }
     ASSERT(format == GetSwapChainFormat(mSwapChain));
 
-    HRESULT result = mSwapChain.CopyTo(swapChain);
-
-    // If the host is responsible for scaling the output of the swapchain, then
-    // scale it now before returning an instance to the caller.  This is done by
-    // first reading the current size of the swapchain panel, then scaling
-    if (SUCCEEDED(result))
-    {
-        if (mSwapChainSizeSpecified || mSwapChainScaleSpecified)
-        {
-            Size currentPanelSize = {};
-            result                = GetSwapChainSize(mSwapChain, &currentPanelSize);
-
-            // Scale the swapchain to fit inside the contents of the panel.
-            if (SUCCEEDED(result))
-            {
-                ASSERT(width == (unsigned int)currentPanelSize.Width);
-                ASSERT(height == (unsigned int)currentPanelSize.Height);
-                result = scaleSwapChain(currentPanelSize, mClientRect);
-            }
-        }
-    }
-
-    return result;
+    return mSwapChain.CopyTo(swapChain);
 }
 
 HRESULT SwapChainNativeWindow::scaleSwapChain(const Size &windowSize, const RECT &clientRect)
