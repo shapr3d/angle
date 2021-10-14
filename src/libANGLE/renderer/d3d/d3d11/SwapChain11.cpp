@@ -69,7 +69,7 @@ SwapChain11::SwapChain11(Renderer11 *renderer,
       mPassThroughResourcesInit(false),
       mNativeWindow(nativeWindow),
       mFirstSwap(true),
-      mSwapEffectDiscards(false),
+      mIsSwapEffectDiscarding(false),
       mSwapChain(nullptr),
       mSwapChain1(nullptr),
       mKeyedMutex(nullptr),
@@ -669,11 +669,11 @@ EGLint SwapChain11::reset(DisplayD3D *displayD3D,
         {
             case DXGI_SWAP_EFFECT_DISCARD:
             case DXGI_SWAP_EFFECT_FLIP_DISCARD:
-                mSwapEffectDiscards = true;
+                mIsSwapEffectDiscarding = true;
                 break;
             case DXGI_SWAP_EFFECT_SEQUENTIAL:
             case DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL:
-                mSwapEffectDiscards = false;
+                mIsSwapEffectDiscarding = false;
                 break;
         }
 
@@ -945,7 +945,7 @@ EGLint SwapChain11::present(DisplayD3D *displayD3D, EGLint x, EGLint y, EGLint w
     // Dirty rect present is not supported with a multisampled swapchain.
     // Partial Presentation (using a dirty rects or scroll) is not supported for SwapChains created
     // with DXGI_SWAP_EFFECT_DISCARD or DXGI_SWAP_EFFECT_FLIP_DISCARD
-    if (mSwapChain1 != nullptr && mEGLSamples <= 1 && !mSwapEffectDiscards)
+    if (mSwapChain1 != nullptr && mEGLSamples <= 1 && !mIsSwapEffectDiscarding)
     {
         if (mFirstSwap)
         {
