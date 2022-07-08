@@ -104,6 +104,10 @@ class TextureStorage11 : public TextureStorage
     bool isManaged() const override;
     bool supportsNativeMipmapFunction() const override;
     int getLevelCount() const override;
+    int getLevelWidth(int mipLevel) const override;
+    int getLevelHeight(int mipLevel) const override;
+    int getLevelDepth(int mipLevel) const override;
+
     angle::Result generateMipmap(const gl::Context *context,
                                  const gl::ImageIndex &sourceIndex,
                                  const gl::ImageIndex &destIndex) override;
@@ -148,9 +152,6 @@ class TextureStorage11 : public TextureStorage
                      UINT miscFlags,
                      GLenum internalFormat,
                      const std::string &label);
-    int getLevelWidth(int mipLevel) const;
-    int getLevelHeight(int mipLevel) const;
-    int getLevelDepth(int mipLevel) const;
 
     // Some classes (e.g. TextureStorage11_2D) will override getMippedResource.
     virtual angle::Result getMippedResource(const gl::Context *context,

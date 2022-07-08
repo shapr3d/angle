@@ -45,6 +45,9 @@ class TextureStorage9 : public TextureStorage
     bool isManaged() const override;
     bool supportsNativeMipmapFunction() const override;
     int getLevelCount() const override;
+    int getLevelWidth(int mipLevel) const override;
+    int getLevelHeight(int mipLevel) const override;
+    int getLevelDepth(int mipLevel) const override;
 
     angle::Result setData(const gl::Context *context,
                           const gl::ImageIndex &index,
