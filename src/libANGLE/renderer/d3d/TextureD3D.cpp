@@ -651,21 +651,28 @@ angle::Result TextureD3D::getAttachmentRenderTarget(const gl::Context *context,
 
 angle::Result TextureD3D::setBaseLevel(const gl::Context *context, GLuint baseLevel)
 {
-    const int oldStorageWidth  = std::max(1, getLevelZeroWidth());
-    const int oldStorageHeight = std::max(1, getLevelZeroHeight());
-    const int oldStorageDepth  = std::max(1, getLevelZeroDepth());
-    const int oldStorageFormat = getBaseLevelInternalFormat();
-    mBaseLevel                 = baseLevel;
+    if (!mTexStorage)
+    {
+        mBaseLevel = baseLevel;
+        return angle::Result::Continue;
+    }
 
     // When the base level changes, the texture storage might not be valid anymore, since it could
     // have been created based on the dimensions of the previous specified level range.
-    const int newStorageWidth  = std::max(1, getLevelZeroWidth());
-    const int newStorageHeight = std::max(1, getLevelZeroHeight());
-    const int newStorageDepth  = std::max(1, getLevelZeroDepth());
-    const int newStorageFormat = getBaseLevelInternalFormat();
-    if (mTexStorage &&
-        (newStorageWidth != oldStorageWidth || newStorageHeight != oldStorageHeight ||
-         newStorageDepth != oldStorageDepth || newStorageFormat != oldStorageFormat))
+    const int oldFormat = getBaseLevelInternalFormat();
+    mBaseLevel          = baseLevel;
+    const int newFormat = getBaseLevelInternalFormat();
+
+    const int storageWidth  = mTexStorage->getLevelWidth(baseLevel);
+    const int storageHeight = mTexStorage->getLevelHeight(baseLevel);
+    const int storageDepth  = mTexStorage->getLevelDepth(baseLevel);
+
+    const int imageWidth  = std::max(1, getBaseLevelWidth());
+    const int imageHeight = std::max(1, getBaseLevelHeight());
+    const int imageDepth  = std::max(1, getBaseLevelDepth());
+
+    if (storageWidth != imageWidth || storageHeight != imageHeight || storageDepth != imageDepth ||
+        oldFormat != newFormat)
     {
         markAllImagesDirty();
 

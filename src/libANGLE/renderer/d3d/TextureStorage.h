@@ -50,6 +50,9 @@ class TextureStorage : public angle::Subject
     virtual bool isManaged() const                    = 0;
     virtual bool supportsNativeMipmapFunction() const = 0;
     virtual int getLevelCount() const                 = 0;
+    virtual int getLevelWidth(int mipLevel) const     = 0;
+    virtual int getLevelHeight(int mipLevel) const    = 0;
+    virtual int getLevelDepth(int mipLevel) const     = 0;
 
     virtual angle::Result findRenderTarget(const gl::Context *context,
                                            const gl::ImageIndex &index,

@@ -92,6 +92,20 @@ int TextureStorage9::getLevelCount() const
     return static_cast<int>(mMipLevels) - mTopLevel;
 }
 
+int TextureStorage9::getLevelWidth(int mipLevel) const
+{
+    return std::max(static_cast<int>(mTextureWidth) >> mipLevel, 1);
+}
+
+int TextureStorage9::getLevelHeight(int mipLevel) const
+{
+    return std::max(static_cast<int>(mTextureHeight) >> mipLevel, 1);
+}
+int TextureStorage9::getLevelDepth(int mipLevel) const
+{
+    return 1;
+}
+
 angle::Result TextureStorage9::setData(const gl::Context *context,
                                        const gl::ImageIndex &index,
                                        ImageD3D *image,
