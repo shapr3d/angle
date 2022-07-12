@@ -270,7 +270,7 @@ void StateManager11::ViewCache<ViewType, DescType>::update(size_t resourceIndex,
             do
             {
                 --mHighestUsedView;
-            } while (mHighestUsedView > 0 && mCurrentViews[mHighestUsedView].view == 0);
+            } while (mHighestUsedView > 0 && mCurrentViews[mHighestUsedView - 1].view == 0);
         }
     }
 }
