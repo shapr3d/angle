@@ -13,12 +13,18 @@
 
 #include "common/PoolAlloc.h"
 #include "common/vulkan/vk_headers.h"
+#include "libANGLE/renderer/vulkan/vk_command_buffer_utils.h"
 #include "libANGLE/renderer/vulkan/vk_wrapper.h"
 
 namespace rx
 {
+class ContextVk;
+
 namespace vk
 {
+class Context;
+class RenderPassDesc;
+
 namespace priv
 {
 
@@ -38,6 +44,7 @@ enum class CommandID : uint16_t
     BindIndexBuffer,
     BindTransformFeedbackBuffers,
     BindVertexBuffers,
+    BindVertexBuffers2,
     BlitImage,
     BufferBarrier,
     ClearAttachments,
@@ -62,7 +69,6 @@ enum class CommandID : uint16_t
     EndDebugUtilsLabel,
     EndQuery,
     EndTransformFeedback,
-    ExecutionBarrier,
     FillBuffer,
     ImageBarrier,
     InsertDebugUtilsLabel,
@@ -73,8 +79,25 @@ enum class CommandID : uint16_t
     ResetEvent,
     ResetQueryPool,
     ResolveImage,
+    SetBlendConstants,
+    SetCullMode,
+    SetDepthBias,
+    SetDepthBiasEnable,
+    SetDepthCompareOp,
+    SetDepthTestEnable,
+    SetDepthWriteEnable,
     SetEvent,
+    SetFragmentShadingRate,
+    SetFrontFace,
+    SetLineWidth,
+    SetPrimitiveRestartEnable,
+    SetRasterizerDiscardEnable,
     SetScissor,
+    SetStencilCompareMask,
+    SetStencilOp,
+    SetStencilReference,
+    SetStencilTestEnable,
+    SetStencilWriteMask,
     SetViewport,
     WaitEvents,
     WriteTimestamp,
@@ -132,7 +155,8 @@ struct BindTransformFeedbackBuffersParams
 };
 VERIFY_4_BYTE_ALIGNMENT(BindTransformFeedbackBuffersParams)
 
-using BindVertexBuffersParams = BindTransformFeedbackBuffersParams;
+using BindVertexBuffersParams  = BindTransformFeedbackBuffersParams;
+using BindVertexBuffers2Params = BindVertexBuffersParams;
 
 struct BlitImageParams
 {
@@ -258,6 +282,8 @@ struct DrawIndexedIndirectParams
 {
     VkBuffer buffer;
     VkDeviceSize offset;
+    uint32_t drawCount;
+    uint32_t stride;
 };
 VERIFY_4_BYTE_ALIGNMENT(DrawIndexedIndirectParams)
 
@@ -290,6 +316,8 @@ struct DrawIndirectParams
 {
     VkBuffer buffer;
     VkDeviceSize offset;
+    uint32_t drawCount;
+    uint32_t stride;
 };
 VERIFY_4_BYTE_ALIGNMENT(DrawIndirectParams)
 
@@ -326,12 +354,6 @@ struct EndTransformFeedbackParams
     uint32_t bufferCount;
 };
 VERIFY_4_BYTE_ALIGNMENT(EndTransformFeedbackParams)
-
-struct ExecutionBarrierParams
-{
-    VkPipelineStageFlags stageMask;
-};
-VERIFY_4_BYTE_ALIGNMENT(ExecutionBarrierParams)
 
 struct FillBufferParams
 {
@@ -407,6 +429,50 @@ struct ResolveImageParams
 };
 VERIFY_4_BYTE_ALIGNMENT(ResolveImageParams)
 
+struct SetBlendConstantsParams
+{
+    float blendConstants[4];
+};
+VERIFY_4_BYTE_ALIGNMENT(SetBlendConstantsParams)
+
+struct SetCullModeParams
+{
+    VkCullModeFlags cullMode;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetCullModeParams)
+
+struct SetDepthBiasParams
+{
+    float depthBiasConstantFactor;
+    float depthBiasClamp;
+    float depthBiasSlopeFactor;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetDepthBiasParams)
+
+struct SetDepthBiasEnableParams
+{
+    VkBool32 depthBiasEnable;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetDepthBiasEnableParams)
+
+struct SetDepthCompareOpParams
+{
+    VkCompareOp depthCompareOp;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetDepthCompareOpParams)
+
+struct SetDepthTestEnableParams
+{
+    VkBool32 depthTestEnable;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetDepthTestEnableParams)
+
+struct SetDepthWriteEnableParams
+{
+    VkBool32 depthWriteEnable;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetDepthWriteEnableParams)
+
 struct SetEventParams
 {
     VkEvent event;
@@ -414,11 +480,79 @@ struct SetEventParams
 };
 VERIFY_4_BYTE_ALIGNMENT(SetEventParams)
 
+struct SetFragmentShadingRateParams
+{
+    uint16_t fragmentWidth;
+    uint16_t fragmentHeight;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetFragmentShadingRateParams)
+
+struct SetFrontFaceParams
+{
+    VkFrontFace frontFace;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetFrontFaceParams)
+
+struct SetLineWidthParams
+{
+    float lineWidth;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetLineWidthParams)
+
+struct SetPrimitiveRestartEnableParams
+{
+    VkBool32 primitiveRestartEnable;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetPrimitiveRestartEnableParams)
+
+struct SetRasterizerDiscardEnableParams
+{
+    VkBool32 rasterizerDiscardEnable;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetRasterizerDiscardEnableParams)
+
 struct SetScissorParams
 {
     VkRect2D scissor;
 };
 VERIFY_4_BYTE_ALIGNMENT(SetScissorParams)
+
+struct SetStencilCompareMaskParams
+{
+    uint16_t compareFrontMask;
+    uint16_t compareBackMask;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetStencilCompareMaskParams)
+
+struct SetStencilOpParams
+{
+    uint32_t faceMask : 4;
+    uint32_t failOp : 3;
+    uint32_t passOp : 3;
+    uint32_t depthFailOp : 3;
+    uint32_t compareOp : 3;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetStencilOpParams)
+
+struct SetStencilReferenceParams
+{
+    uint16_t frontReference;
+    uint16_t backReference;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetStencilReferenceParams)
+
+struct SetStencilTestEnableParams
+{
+    VkBool32 stencilTestEnable;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetStencilTestEnableParams)
+
+struct SetStencilWriteMaskParams
+{
+    uint16_t writeFrontMask;
+    uint16_t writeBackMask;
+};
+VERIFY_4_BYTE_ALIGNMENT(SetStencilWriteMaskParams)
 
 struct SetViewportParams
 {
@@ -477,6 +611,22 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     // buffer.
     static constexpr bool ExecutesInline() { return true; }
 
+    static angle::Result InitializeCommandPool(Context *context,
+                                               CommandPool *pool,
+                                               uint32_t queueFamilyIndex,
+                                               bool hasProtectedContent)
+    {
+        return angle::Result::Continue;
+    }
+    static angle::Result InitializeRenderPassInheritanceInfo(
+        ContextVk *contextVk,
+        const Framebuffer &framebuffer,
+        const RenderPassDesc &renderPassDesc,
+        VkCommandBufferInheritanceInfo *inheritanceInfoOut)
+    {
+        return angle::Result::Continue;
+    }
+
     // Add commands
     void beginDebugUtilsLabelEXT(const VkDebugUtilsLabelEXT &label);
 
@@ -511,6 +661,13 @@ class SecondaryCommandBuffer final : angle::NonCopyable
                            uint32_t bindingCount,
                            const VkBuffer *buffers,
                            const VkDeviceSize *offsets);
+
+    void bindVertexBuffers2(uint32_t firstBinding,
+                            uint32_t bindingCount,
+                            const VkBuffer *buffers,
+                            const VkDeviceSize *offsets,
+                            const VkDeviceSize *sizes,
+                            const VkDeviceSize *strides);
 
     void blitImage(const Image &srcImage,
                    VkImageLayout srcImageLayout,
@@ -607,8 +764,6 @@ class SecondaryCommandBuffer final : angle::NonCopyable
                               const VkBuffer *counterBuffers,
                               const VkDeviceSize *counterBufferOffsets);
 
-    void executionBarrier(VkPipelineStageFlags stageMask);
-
     void fillBuffer(const Buffer &dstBuffer,
                     VkDeviceSize dstOffset,
                     VkDeviceSize size,
@@ -653,10 +808,32 @@ class SecondaryCommandBuffer final : angle::NonCopyable
                       uint32_t regionCount,
                       const VkImageResolve *regions);
 
+    void setBlendConstants(const float blendConstants[4]);
+    void setCullMode(VkCullModeFlags cullMode);
+    void setDepthBias(float depthBiasConstantFactor,
+                      float depthBiasClamp,
+                      float depthBiasSlopeFactor);
+    void setDepthBiasEnable(VkBool32 depthBiasEnable);
+    void setDepthCompareOp(VkCompareOp depthCompareOp);
+    void setDepthTestEnable(VkBool32 depthTestEnable);
+    void setDepthWriteEnable(VkBool32 depthWriteEnable);
     void setEvent(VkEvent event, VkPipelineStageFlags stageMask);
-
+    void setFragmentShadingRate(const VkExtent2D *fragmentSize,
+                                VkFragmentShadingRateCombinerOpKHR ops[2]);
+    void setFrontFace(VkFrontFace frontFace);
+    void setLineWidth(float lineWidth);
+    void setPrimitiveRestartEnable(VkBool32 primitiveRestartEnable);
+    void setRasterizerDiscardEnable(VkBool32 rasterizerDiscardEnable);
     void setScissor(uint32_t firstScissor, uint32_t scissorCount, const VkRect2D *scissors);
-
+    void setStencilCompareMask(uint32_t compareFrontMask, uint32_t compareBackMask);
+    void setStencilOp(VkStencilFaceFlags faceMask,
+                      VkStencilOp failOp,
+                      VkStencilOp passOp,
+                      VkStencilOp depthFailOp,
+                      VkCompareOp compareOp);
+    void setStencilReference(uint32_t frontReference, uint32_t backReference);
+    void setStencilTestEnable(VkBool32 stencilTestEnable);
+    void setStencilWriteMask(uint32_t writeFrontMask, uint32_t writeBackMask);
     void setViewport(uint32_t firstViewport, uint32_t viewportCount, const VkViewport *viewports);
 
     void waitEvents(uint32_t eventCount,
@@ -678,7 +855,7 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     VkResult end() { return VK_SUCCESS; }
 
     // Parse the cmds in this cmd buffer into given primary cmd buffer for execution
-    void executeCommands(VkCommandBuffer cmdBuffer);
+    void executeCommands(PrimaryCommandBuffer *primary);
 
     // Calculate memory usage of this command buffer for diagnostics.
     void getMemoryUsageStats(size_t *usedMemoryOut, size_t *allocatedMemoryOut) const;
@@ -693,7 +870,10 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     static_assert((kBlockSize % 4) == 0, "Check kBlockSize alignment");
 
     // Initialize the SecondaryCommandBuffer by setting the allocator it will use
-    void initialize(angle::PoolAllocator *allocator)
+    angle::Result initialize(vk::Context *context,
+                             vk::CommandPool *pool,
+                             bool isRenderPassCommandBuffer,
+                             angle::PoolAllocator *allocator)
     {
         ASSERT(allocator);
         ASSERT(mCommands.empty());
@@ -701,7 +881,15 @@ class SecondaryCommandBuffer final : angle::NonCopyable
         allocateNewBlock();
         // Set first command to Invalid to start
         reinterpret_cast<CommandHeader *>(mCurrentWritePointer)->id = CommandID::Invalid;
+
+        return angle::Result::Continue;
     }
+
+    angle::Result begin(Context *context, const VkCommandBufferInheritanceInfo &inheritanceInfo)
+    {
+        return angle::Result::Continue;
+    }
+    angle::Result end(Context *context) { return angle::Result::Continue; }
 
     void open() { mIsOpen = true; }
     void close() { mIsOpen = false; }
@@ -709,7 +897,9 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     void reset()
     {
         mCommands.clear();
-        initialize(mAllocator);
+        mCurrentWritePointer   = nullptr;
+        mCurrentBytesRemaining = 0;
+        mCommandTracker.reset();
     }
 
     // This will cause the SecondaryCommandBuffer to become invalid by clearing its allocator
@@ -717,15 +907,10 @@ class SecondaryCommandBuffer final : angle::NonCopyable
     // The SecondaryCommandBuffer is valid if it's been initialized
     bool valid() const { return mAllocator != nullptr; }
 
-    static bool CanKnowIfEmpty() { return true; }
     bool empty() const { return mCommands.size() == 0 || mCommands[0]->id == CommandID::Invalid; }
-    // The following is used to give the size of the command buffer in bytes
-    uint32_t getCommandSize() const
+    uint32_t getRenderPassWriteCommandCount() const
     {
-        ASSERT(mCommands.size() > 0 || mCurrentBytesRemaining == 0);
-        uint32_t rtn =
-            static_cast<uint32_t>((mCommands.size() * kBlockSize) - mCurrentBytesRemaining);
-        return rtn;
+        return mCommandTracker.getRenderPassWriteCommandCount();
     }
 
   private:
@@ -826,6 +1011,8 @@ class SecondaryCommandBuffer final : angle::NonCopyable
 
     uint8_t *mCurrentWritePointer;
     size_t mCurrentBytesRemaining;
+
+    CommandBufferCommandTracker mCommandTracker;
 };
 
 ANGLE_INLINE SecondaryCommandBuffer::SecondaryCommandBuffer()
@@ -847,7 +1034,7 @@ ANGLE_INLINE void SecondaryCommandBuffer::commonDebugUtilsLabel(CommandID cmd,
     paramStruct->color[1] = label.color[1];
     paramStruct->color[2] = label.color[2];
     paramStruct->color[3] = label.color[3];
-    storePointerParameter(writePtr, label.pLabelName, alignedStringSize);
+    storePointerParameter(writePtr, label.pLabelName, stringSize);
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::beginDebugUtilsLabelEXT(const VkDebugUtilsLabelEXT &label)
@@ -872,13 +1059,14 @@ ANGLE_INLINE void SecondaryCommandBuffer::beginTransformFeedback(
     const VkDeviceSize *counterBufferOffsets)
 {
     ASSERT(firstCounterBuffer == 0);
-    ASSERT(counterBufferOffsets == nullptr);
     uint8_t *writePtr;
     size_t bufferSize                         = bufferCount * sizeof(VkBuffer);
+    size_t offsetSize                         = bufferCount * sizeof(VkDeviceSize);
     BeginTransformFeedbackParams *paramStruct = initCommand<BeginTransformFeedbackParams>(
-        CommandID::BeginTransformFeedback, bufferSize, &writePtr);
+        CommandID::BeginTransformFeedback, bufferSize + offsetSize, &writePtr);
     paramStruct->bufferCount = bufferCount;
-    storePointerParameter(writePtr, counterBuffers, bufferSize);
+    writePtr                 = storePointerParameter(writePtr, counterBuffers, bufferSize);
+    storePointerParameter(writePtr, counterBufferOffsets, offsetSize);
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::bindComputePipeline(const Pipeline &pipeline)
@@ -969,6 +1157,28 @@ ANGLE_INLINE void SecondaryCommandBuffer::bindVertexBuffers(uint32_t firstBindin
     storePointerParameter(writePtr, offsets, offsetsSize);
 }
 
+ANGLE_INLINE void SecondaryCommandBuffer::bindVertexBuffers2(uint32_t firstBinding,
+                                                             uint32_t bindingCount,
+                                                             const VkBuffer *buffers,
+                                                             const VkDeviceSize *offsets,
+                                                             const VkDeviceSize *sizes,
+                                                             const VkDeviceSize *strides)
+{
+    ASSERT(firstBinding == 0);
+    ASSERT(sizes == nullptr);
+    uint8_t *writePtr;
+    size_t buffersSize                    = bindingCount * sizeof(VkBuffer);
+    size_t offsetsSize                    = bindingCount * sizeof(VkDeviceSize);
+    size_t stridesSize                    = bindingCount * sizeof(VkDeviceSize);
+    BindVertexBuffers2Params *paramStruct = initCommand<BindVertexBuffers2Params>(
+        CommandID::BindVertexBuffers2, buffersSize + offsetsSize + stridesSize, &writePtr);
+    // Copy params
+    paramStruct->bindingCount = bindingCount;
+    writePtr                  = storePointerParameter(writePtr, buffers, buffersSize);
+    writePtr                  = storePointerParameter(writePtr, offsets, offsetsSize);
+    storePointerParameter(writePtr, strides, stridesSize);
+}
+
 ANGLE_INLINE void SecondaryCommandBuffer::blitImage(const Image &srcImage,
                                                     VkImageLayout srcImageLayout,
                                                     const Image &dstImage,
@@ -1013,6 +1223,8 @@ ANGLE_INLINE void SecondaryCommandBuffer::clearAttachments(uint32_t attachmentCo
     paramStruct->rect            = rects[0];
     // Copy variable sized data
     storePointerParameter(writePtr, attachments, attachSize);
+
+    mCommandTracker.onClearAttachments();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::clearColorImage(const Image &image,
@@ -1132,12 +1344,16 @@ ANGLE_INLINE void SecondaryCommandBuffer::draw(uint32_t vertexCount, uint32_t fi
     DrawParams *paramStruct  = initCommand<DrawParams>(CommandID::Draw);
     paramStruct->vertexCount = vertexCount;
     paramStruct->firstVertex = firstVertex;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawIndexed(uint32_t indexCount)
 {
     DrawIndexedParams *paramStruct = initCommand<DrawIndexedParams>(CommandID::DrawIndexed);
     paramStruct->indexCount        = indexCount;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedBaseVertex(uint32_t indexCount,
@@ -1147,6 +1363,8 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedBaseVertex(uint32_t indexCo
         initCommand<DrawIndexedBaseVertexParams>(CommandID::DrawIndexedBaseVertex);
     paramStruct->indexCount   = indexCount;
     paramStruct->vertexOffset = vertexOffset;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedIndirect(const Buffer &buffer,
@@ -1156,9 +1374,12 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedIndirect(const Buffer &buff
 {
     DrawIndexedIndirectParams *paramStruct =
         initCommand<DrawIndexedIndirectParams>(CommandID::DrawIndexedIndirect);
-    paramStruct->buffer = buffer.getHandle();
-    paramStruct->offset = offset;
-    ASSERT(drawCount == 1);
+    paramStruct->buffer    = buffer.getHandle();
+    paramStruct->offset    = offset;
+    paramStruct->drawCount = drawCount;
+    paramStruct->stride    = stride;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedInstanced(uint32_t indexCount,
@@ -1168,6 +1389,8 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedInstanced(uint32_t indexCou
         initCommand<DrawIndexedInstancedParams>(CommandID::DrawIndexedInstanced);
     paramStruct->indexCount    = indexCount;
     paramStruct->instanceCount = instanceCount;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedInstancedBaseVertex(uint32_t indexCount,
@@ -1180,6 +1403,8 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedInstancedBaseVertex(uint32_
     paramStruct->indexCount    = indexCount;
     paramStruct->instanceCount = instanceCount;
     paramStruct->vertexOffset  = vertexOffset;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedInstancedBaseVertexBaseInstance(
@@ -1197,6 +1422,8 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawIndexedInstancedBaseVertexBaseInst
     paramStruct->firstIndex    = firstIndex;
     paramStruct->vertexOffset  = vertexOffset;
     paramStruct->firstInstance = firstInstance;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawIndirect(const Buffer &buffer,
@@ -1207,10 +1434,10 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawIndirect(const Buffer &buffer,
     DrawIndirectParams *paramStruct = initCommand<DrawIndirectParams>(CommandID::DrawIndirect);
     paramStruct->buffer             = buffer.getHandle();
     paramStruct->offset             = offset;
+    paramStruct->drawCount          = drawCount;
+    paramStruct->stride             = stride;
 
-    // OpenGL ES doesn't have a way to specify a drawCount or stride, throw assert if something
-    // changes.
-    ASSERT(drawCount == 1);
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawInstanced(uint32_t vertexCount,
@@ -1221,6 +1448,8 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawInstanced(uint32_t vertexCount,
     paramStruct->vertexCount         = vertexCount;
     paramStruct->instanceCount       = instanceCount;
     paramStruct->firstVertex         = firstVertex;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::drawInstancedBaseInstance(uint32_t vertexCount,
@@ -1234,6 +1463,8 @@ ANGLE_INLINE void SecondaryCommandBuffer::drawInstancedBaseInstance(uint32_t ver
     paramStruct->instanceCount = instanceCount;
     paramStruct->firstVertex   = firstVertex;
     paramStruct->firstInstance = firstInstance;
+
+    mCommandTracker.onDraw();
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::endDebugUtilsLabelEXT()
@@ -1255,20 +1486,14 @@ ANGLE_INLINE void SecondaryCommandBuffer::endTransformFeedback(
     const VkDeviceSize *counterBufferOffsets)
 {
     ASSERT(firstCounterBuffer == 0);
-    ASSERT(counterBufferOffsets == nullptr);
     uint8_t *writePtr;
     size_t bufferSize                       = counterBufferCount * sizeof(VkBuffer);
+    size_t offsetSize                       = counterBufferCount * sizeof(VkDeviceSize);
     EndTransformFeedbackParams *paramStruct = initCommand<EndTransformFeedbackParams>(
-        CommandID::EndTransformFeedback, bufferSize, &writePtr);
+        CommandID::EndTransformFeedback, bufferSize + offsetSize, &writePtr);
     paramStruct->bufferCount = counterBufferCount;
-    storePointerParameter(writePtr, counterBuffers, bufferSize);
-}
-
-ANGLE_INLINE void SecondaryCommandBuffer::executionBarrier(VkPipelineStageFlags stageMask)
-{
-    ExecutionBarrierParams *paramStruct =
-        initCommand<ExecutionBarrierParams>(CommandID::ExecutionBarrier);
-    paramStruct->stageMask = stageMask;
+    writePtr                 = storePointerParameter(writePtr, counterBuffers, bufferSize);
+    storePointerParameter(writePtr, counterBufferOffsets, offsetSize);
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::fillBuffer(const Buffer &dstBuffer,
@@ -1399,11 +1624,112 @@ ANGLE_INLINE void SecondaryCommandBuffer::resolveImage(const Image &srcImage,
     paramStruct->region             = regions[0];
 }
 
+ANGLE_INLINE void SecondaryCommandBuffer::setBlendConstants(const float blendConstants[4])
+{
+    SetBlendConstantsParams *paramStruct =
+        initCommand<SetBlendConstantsParams>(CommandID::SetBlendConstants);
+    for (uint32_t channel = 0; channel < 4; ++channel)
+    {
+        paramStruct->blendConstants[channel] = blendConstants[channel];
+    }
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setCullMode(VkCullModeFlags cullMode)
+{
+    SetCullModeParams *paramStruct = initCommand<SetCullModeParams>(CommandID::SetCullMode);
+    paramStruct->cullMode          = cullMode;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setDepthBias(float depthBiasConstantFactor,
+                                                       float depthBiasClamp,
+                                                       float depthBiasSlopeFactor)
+{
+    SetDepthBiasParams *paramStruct      = initCommand<SetDepthBiasParams>(CommandID::SetDepthBias);
+    paramStruct->depthBiasConstantFactor = depthBiasConstantFactor;
+    paramStruct->depthBiasClamp          = depthBiasClamp;
+    paramStruct->depthBiasSlopeFactor    = depthBiasSlopeFactor;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setDepthBiasEnable(VkBool32 depthBiasEnable)
+{
+    SetDepthBiasEnableParams *paramStruct =
+        initCommand<SetDepthBiasEnableParams>(CommandID::SetDepthBiasEnable);
+    paramStruct->depthBiasEnable = depthBiasEnable;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setDepthCompareOp(VkCompareOp depthCompareOp)
+{
+    SetDepthCompareOpParams *paramStruct =
+        initCommand<SetDepthCompareOpParams>(CommandID::SetDepthCompareOp);
+    paramStruct->depthCompareOp = depthCompareOp;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setDepthTestEnable(VkBool32 depthTestEnable)
+{
+    SetDepthTestEnableParams *paramStruct =
+        initCommand<SetDepthTestEnableParams>(CommandID::SetDepthTestEnable);
+    paramStruct->depthTestEnable = depthTestEnable;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setDepthWriteEnable(VkBool32 depthWriteEnable)
+{
+    SetDepthWriteEnableParams *paramStruct =
+        initCommand<SetDepthWriteEnableParams>(CommandID::SetDepthWriteEnable);
+    paramStruct->depthWriteEnable = depthWriteEnable;
+}
+
 ANGLE_INLINE void SecondaryCommandBuffer::setEvent(VkEvent event, VkPipelineStageFlags stageMask)
 {
     SetEventParams *paramStruct = initCommand<SetEventParams>(CommandID::SetEvent);
     paramStruct->event          = event;
     paramStruct->stageMask      = stageMask;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setFragmentShadingRate(
+    const VkExtent2D *fragmentSize,
+    VkFragmentShadingRateCombinerOpKHR ops[2])
+{
+    ASSERT(fragmentSize != nullptr);
+
+    // Supported parameter values -
+    // 1. CombinerOp needs to be VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR
+    // 2. The largest fragment size supported is 4x4
+    ASSERT(ops[0] == VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
+    ASSERT(ops[1] == VK_FRAGMENT_SHADING_RATE_COMBINER_OP_KEEP_KHR);
+    ASSERT(fragmentSize->width <= 4);
+    ASSERT(fragmentSize->height <= 4);
+
+    SetFragmentShadingRateParams *paramStruct =
+        initCommand<SetFragmentShadingRateParams>(CommandID::SetFragmentShadingRate);
+    paramStruct->fragmentWidth  = static_cast<uint16_t>(fragmentSize->width);
+    paramStruct->fragmentHeight = static_cast<uint16_t>(fragmentSize->height);
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setFrontFace(VkFrontFace frontFace)
+{
+    SetFrontFaceParams *paramStruct = initCommand<SetFrontFaceParams>(CommandID::SetFrontFace);
+    paramStruct->frontFace          = frontFace;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setLineWidth(float lineWidth)
+{
+    SetLineWidthParams *paramStruct = initCommand<SetLineWidthParams>(CommandID::SetLineWidth);
+    paramStruct->lineWidth          = lineWidth;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setPrimitiveRestartEnable(VkBool32 primitiveRestartEnable)
+{
+    SetPrimitiveRestartEnableParams *paramStruct =
+        initCommand<SetPrimitiveRestartEnableParams>(CommandID::SetPrimitiveRestartEnable);
+    paramStruct->primitiveRestartEnable = primitiveRestartEnable;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setRasterizerDiscardEnable(
+    VkBool32 rasterizerDiscardEnable)
+{
+    SetRasterizerDiscardEnableParams *paramStruct =
+        initCommand<SetRasterizerDiscardEnableParams>(CommandID::SetRasterizerDiscardEnable);
+    paramStruct->rasterizerDiscardEnable = rasterizerDiscardEnable;
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::setScissor(uint32_t firstScissor,
@@ -1415,6 +1741,54 @@ ANGLE_INLINE void SecondaryCommandBuffer::setScissor(uint32_t firstScissor,
     ASSERT(scissors != nullptr);
     SetScissorParams *paramStruct = initCommand<SetScissorParams>(CommandID::SetScissor);
     paramStruct->scissor          = scissors[0];
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setStencilCompareMask(uint32_t compareFrontMask,
+                                                                uint32_t compareBackMask)
+{
+    SetStencilCompareMaskParams *paramStruct =
+        initCommand<SetStencilCompareMaskParams>(CommandID::SetStencilCompareMask);
+    paramStruct->compareFrontMask = static_cast<uint16_t>(compareFrontMask);
+    paramStruct->compareBackMask  = static_cast<uint16_t>(compareBackMask);
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setStencilOp(VkStencilFaceFlags faceMask,
+                                                       VkStencilOp failOp,
+                                                       VkStencilOp passOp,
+                                                       VkStencilOp depthFailOp,
+                                                       VkCompareOp compareOp)
+{
+    SetStencilOpParams *paramStruct = initCommand<SetStencilOpParams>(CommandID::SetStencilOp);
+    SetBitField(paramStruct->faceMask, faceMask);
+    SetBitField(paramStruct->failOp, failOp);
+    SetBitField(paramStruct->passOp, passOp);
+    SetBitField(paramStruct->depthFailOp, depthFailOp);
+    SetBitField(paramStruct->compareOp, compareOp);
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setStencilReference(uint32_t frontReference,
+                                                              uint32_t backReference)
+{
+    SetStencilReferenceParams *paramStruct =
+        initCommand<SetStencilReferenceParams>(CommandID::SetStencilReference);
+    paramStruct->frontReference = static_cast<uint16_t>(frontReference);
+    paramStruct->backReference  = static_cast<uint16_t>(backReference);
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setStencilTestEnable(VkBool32 stencilTestEnable)
+{
+    SetStencilTestEnableParams *paramStruct =
+        initCommand<SetStencilTestEnableParams>(CommandID::SetStencilTestEnable);
+    paramStruct->stencilTestEnable = stencilTestEnable;
+}
+
+ANGLE_INLINE void SecondaryCommandBuffer::setStencilWriteMask(uint32_t writeFrontMask,
+                                                              uint32_t writeBackMask)
+{
+    SetStencilWriteMaskParams *paramStruct =
+        initCommand<SetStencilWriteMaskParams>(CommandID::SetStencilWriteMask);
+    paramStruct->writeFrontMask = static_cast<uint16_t>(writeFrontMask);
+    paramStruct->writeBackMask  = static_cast<uint16_t>(writeBackMask);
 }
 
 ANGLE_INLINE void SecondaryCommandBuffer::setViewport(uint32_t firstViewport,

@@ -116,9 +116,6 @@
     void viewportArrayv(GLuint first, GLsizei count, const GLfloat *v);                            \
     void viewportIndexedf(GLuint index, GLfloat x, GLfloat y, GLfloat w, GLfloat h);               \
     void viewportIndexedfv(GLuint index, const GLfloat *v);                                        \
-    void drawElementsInstancedBaseInstance(GLenum mode, GLsizei count, GLenum type,                \
-                                           const void *indices, GLsizei instancecount,             \
-                                           GLuint baseinstance);                                   \
     void drawTransformFeedbackInstanced(GLenum mode, TransformFeedbackID idPacked,                 \
                                         GLsizei instancecount);                                    \
     void drawTransformFeedbackStreamInstanced(GLenum mode, TransformFeedbackID idPacked,           \
@@ -136,10 +133,6 @@
     void invalidateTexImage(TextureID texturePacked, GLint level);                                 \
     void invalidateTexSubImage(TextureID texturePacked, GLint level, GLint xoffset, GLint yoffset, \
                                GLint zoffset, GLsizei width, GLsizei height, GLsizei depth);       \
-    void multiDrawArraysIndirect(GLenum mode, const void *indirect, GLsizei drawcount,             \
-                                 GLsizei stride);                                                  \
-    void multiDrawElementsIndirect(GLenum mode, GLenum type, const void *indirect,                 \
-                                   GLsizei drawcount, GLsizei stride);                             \
     void shaderStorageBlockBinding(ShaderProgramID programPacked, GLuint storageBlockIndex,        \
                                    GLuint storageBlockBinding);                                    \
     void textureView(TextureID texturePacked, GLenum target, GLuint origtexture,                   \

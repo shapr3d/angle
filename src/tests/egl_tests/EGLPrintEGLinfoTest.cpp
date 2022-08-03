@@ -11,6 +11,11 @@
 
 #include "common/string_utils.h"
 #include "test_utils/ANGLETest.h"
+#include "test_utils/runner/TestSuite.h"
+
+#if defined(ANGLE_HAS_RAPIDJSON)
+#    include "common/serializer/JsonSerializer.h"
+#endif  // defined(ANGLE_HAS_RAPIDJSON)
 
 using namespace angle;
 
@@ -52,6 +57,7 @@ const char *GetEGLString(EGLDisplay display, EGLint name)
 {
     const char *value = "";
     value             = eglQueryString(display, name);
+    EXPECT_EGL_ERROR(EGL_SUCCESS);
     EXPECT_TRUE(value != nullptr);
     return value;
 }
@@ -61,6 +67,7 @@ const char *GetGLString(EGLint name)
 {
     const char *value = "";
     value             = reinterpret_cast<const char *>(glGetString(name));
+    EXPECT_GL_ERROR(GL_NO_ERROR);
     EXPECT_TRUE(value != nullptr);
     return value;
 }
@@ -72,7 +79,9 @@ TEST_P(EGLPrintEGLinfoTest, PrintEGLInfo)
 {
     std::cout << "    EGL Information:" << std::endl;
     std::cout << "\tVendor: " << GetEGLString(mDisplay, EGL_VENDOR) << std::endl;
-    std::cout << "\tVersion: " << GetEGLString(mDisplay, EGL_VENDOR) << std::endl;
+    std::cout << "\tVersion (EGL_NO_DISPLAY): " << GetEGLString(EGL_NO_DISPLAY, EGL_VERSION)
+              << std::endl;
+    std::cout << "\tVersion: " << GetEGLString(mDisplay, EGL_VERSION) << std::endl;
     std::cout << "\tClient APIs: " << GetEGLString(mDisplay, EGL_CLIENT_APIS) << std::endl;
 
     std::cout << "\tEGL Client Extensions:" << std::endl;
@@ -100,12 +109,47 @@ TEST_P(EGLPrintEGLinfoTest, PrintGLInfo)
     std::cout << "\tShader: " << GetGLString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
     std::cout << "\tExtensions:" << std::endl;
-    for (auto extension : ParseExtensions(GetGLString(GL_EXTENSIONS)))
+
+    const std::vector<std::string> extensions = ParseExtensions(GetGLString(GL_EXTENSIONS));
+
+    for (const std::string &extension : extensions)
     {
         std::cout << "\t\t" << extension << std::endl;
     }
 
     std::cout << std::endl;
+
+#if defined(ANGLE_HAS_RAPIDJSON)
+    angle::TestSuite *testSuite = angle::TestSuite::GetInstance();
+    if (!testSuite->hasTestArtifactsDirectory())
+    {
+        return;
+    }
+    JsonSerializer json;
+    json.addCString("Vendor", GetGLString(GL_VENDOR));
+    json.addCString("Version", GetGLString(GL_VERSION));
+    json.addCString("Renderer", GetGLString(GL_RENDERER));
+    json.addCString("ShaderLanguageVersion", GetGLString(GL_SHADING_LANGUAGE_VERSION));
+    json.addVectorOfStrings("Extensions", extensions);
+
+    constexpr size_t kBufferSize = 1000;
+    std::array<char, kBufferSize> buffer;
+    std::time_t timeNow = std::time(nullptr);
+    std::strftime(buffer.data(), buffer.size(), "%B %e, %Y", std::localtime(&timeNow));
+    json.addCString("DateRecorded", buffer.data());
+
+    std::stringstream fnameStream;
+    fnameStream << "GLinfo_" << GetParam() << ".json";
+    std::string fname = fnameStream.str();
+
+    const std::string artifactPath = testSuite->reserveTestArtifactPath(fname);
+
+    {
+        std::vector<uint8_t> jsonData = json.getData();
+        SaveFileHelper saveFile(artifactPath);
+        saveFile.write(jsonData.data(), jsonData.size());
+    }
+#endif  // defined(ANGLE_HAS_RAPIDJSON)
 }
 
 #define QUERY_HELPER(enumValue, enumString, stream)                                    \
@@ -316,6 +360,11 @@ TEST_P(EGLPrintEGLinfoTest, PrintGLESCapabilities)
 
     switch (getClientMajorVersion())
     {
+        case 1:
+            break;
+        case 2:
+            LogGles2Capabilities(stream);
+            break;
         case 3:
             switch (getClientMinorVersion())
             {
@@ -331,9 +380,6 @@ TEST_P(EGLPrintEGLinfoTest, PrintGLESCapabilities)
                 default:
                     FAIL() << "unknown client minor version.";
             }
-            break;
-        case 2:
-            LogGles2Capabilities(stream);
             break;
         default:
             FAIL() << "unknown client major version.";
@@ -485,7 +531,13 @@ TEST_P(EGLPrintEGLinfoTest, PrintConfigInfo)
     }
 }
 
-ANGLE_INSTANTIATE_TEST(EGLPrintEGLinfoTest, ES2_VULKAN(), ES3_VULKAN(), ES32_VULKAN());
+ANGLE_INSTANTIATE_TEST(EGLPrintEGLinfoTest,
+                       ES1_VULKAN(),
+                       ES1_VULKAN_SWIFTSHADER(),
+                       ES2_VULKAN(),
+                       ES3_VULKAN(),
+                       ES32_VULKAN(),
+                       ES31_VULKAN_SWIFTSHADER());
 
 // This test suite is not instantiated on some OSes.
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(EGLPrintEGLinfoTest);

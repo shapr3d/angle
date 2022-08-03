@@ -397,9 +397,6 @@ void main()
 // Binds a storage buffer to slot 0, then binds a storage image to slot 0, then buffer again.
 TEST_P(ComputeShaderTest, BufferImageBuffer)
 {
-    // See http://anglebug.com/3536
-    ANGLE_SKIP_TEST_IF(IsOpenGL() && IsIntel() && IsWindows());
-
     constexpr char kCS0[] = R"(#version 310 es
 layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
 layout(binding = 0, offset = 4) uniform atomic_uint ac[2];
@@ -461,6 +458,88 @@ void main()
     EXPECT_EQ(11u, bufferData[0]);
     EXPECT_EQ(6u, bufferData[1]);
     EXPECT_EQ(2u, bufferData[2]);
+
+    EXPECT_GL_NO_ERROR();
+}
+
+// Test that the buffer written to by imageStore() in the CS does not race with writing to the
+// buffer when it's mapped.
+TEST_P(ComputeShaderTest, BufferImageBufferMapWrite)
+{
+    constexpr char kCS0[] = R"(#version 310 es
+layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
+layout(binding = 0, offset = 4) uniform atomic_uint ac[2];
+void main()
+{
+    atomicCounterIncrement(ac[0]);
+    atomicCounterDecrement(ac[1]);
+})";
+
+    ANGLE_GL_COMPUTE_PROGRAM(program0, kCS0);
+    glUseProgram(program0);
+
+    unsigned int expectedBufferData[3] = {11u, 4u, 4u};
+    unsigned int bufferData[3]         = {0};
+    memcpy(bufferData, expectedBufferData, sizeof(bufferData));
+
+    GLBuffer atomicCounterBuffer;
+    glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomicCounterBuffer);
+    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(bufferData), bufferData, GL_STATIC_DRAW);
+
+    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomicCounterBuffer);
+
+    glDispatchCompute(1, 1, 1);
+    EXPECT_GL_NO_ERROR();
+
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+    void *mappedBuffer =
+        glMapBufferRange(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint) * 3, GL_MAP_READ_BIT);
+    memcpy(bufferData, mappedBuffer, sizeof(bufferData));
+    glUnmapBuffer(GL_ATOMIC_COUNTER_BUFFER);
+
+    EXPECT_EQ(11u, bufferData[0]);
+    EXPECT_EQ(5u, bufferData[1]);
+    EXPECT_EQ(3u, bufferData[2]);
+
+    constexpr char kCS1[] = R"(#version 310 es
+layout(local_size_x=4, local_size_y=3, local_size_z=2) in;
+layout(rgba32ui) uniform highp writeonly uimage2D imageOut;
+void main()
+{
+    uvec3 temp = gl_NumWorkGroups;
+    imageStore(imageOut, ivec2(gl_GlobalInvocationID.xy), uvec4(temp, 0u));
+})";
+
+    ANGLE_GL_COMPUTE_PROGRAM(program1, kCS1);
+
+    GLTexture texture;
+    createMockOutputImage(texture, GL_RGBA32UI, 4, 3);
+
+    glUseProgram(program1);
+    glDispatchCompute(8, 4, 2);
+
+    glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT);
+    glUseProgram(program0);
+    glDispatchCompute(1, 1, 1);
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+    mappedBuffer =
+        glMapBufferRange(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint) * 3, GL_MAP_WRITE_BIT);
+
+    memcpy(mappedBuffer, expectedBufferData, sizeof(expectedBufferData));
+    glUnmapBuffer(GL_ATOMIC_COUNTER_BUFFER);
+
+    // Force the CS imageStore() writes to the buffer to complete.
+    glFinish();
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+    mappedBuffer =
+        glMapBufferRange(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint) * 3, GL_MAP_READ_BIT);
+    memcpy(bufferData, mappedBuffer, sizeof(bufferData));
+    glUnmapBuffer(GL_ATOMIC_COUNTER_BUFFER);
+
+    EXPECT_EQ(expectedBufferData[0], bufferData[0]);
+    EXPECT_EQ(expectedBufferData[1], bufferData[1]);
+    EXPECT_EQ(expectedBufferData[2], bufferData[2]);
 
     EXPECT_GL_NO_ERROR();
 }
@@ -841,6 +920,71 @@ void main()
     }
 }
 
+// Test that binding a 2D slice of a 3D texture works with compute shader
+TEST_P(ComputeShaderTest, BindImageTexture3D)
+{
+    GLTexture mTexture[2];
+    GLFramebuffer mFramebuffer;
+    constexpr char kCS[] = R"(#version 310 es
+layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
+layout(r32ui, binding = 0) writeonly uniform highp uimage2D uImage[2];
+void main()
+{
+    imageStore(uImage[0], ivec2(gl_LocalInvocationIndex, gl_WorkGroupID.x), uvec4(100, 0,
+0, 0));
+    imageStore(uImage[1], ivec2(gl_LocalInvocationIndex, gl_WorkGroupID.x), uvec4(100, 0,
+0, 0));
+})";
+
+    ANGLE_GL_COMPUTE_PROGRAM(program, kCS);
+    glUseProgram(program.get());
+    int width = 1, height = 1, depth = 1;
+    GLuint inputValues[] = {200};
+
+    glBindTexture(GL_TEXTURE_3D, mTexture[0]);
+    glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, width, height, depth);
+    glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, width, height, depth, GL_RED_INTEGER,
+                    GL_UNSIGNED_INT, inputValues);
+    EXPECT_GL_NO_ERROR();
+
+    glBindImageTexture(0, mTexture[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+    EXPECT_GL_NO_ERROR();
+
+    glBindTexture(GL_TEXTURE_3D, mTexture[1]);
+    glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, width, height, depth);
+    glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, width, height, depth, GL_RED_INTEGER,
+                    GL_UNSIGNED_INT, inputValues);
+    EXPECT_GL_NO_ERROR();
+
+    glBindImageTexture(1, mTexture[1], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32UI);
+    EXPECT_GL_NO_ERROR();
+
+    glDispatchCompute(1, 1, 1);
+    EXPECT_GL_NO_ERROR();
+
+    glMemoryBarrier(GL_FRAMEBUFFER_BARRIER_BIT);
+    glUseProgram(0);
+    GLuint outputValues[2][1];
+    GLuint expectedValue = 100;
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, mFramebuffer);
+
+    glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, mTexture[0], 0, 0);
+    EXPECT_GL_NO_ERROR();
+    glReadPixels(0, 0, width, height, GL_RED_INTEGER, GL_UNSIGNED_INT, outputValues[0]);
+    EXPECT_GL_NO_ERROR();
+
+    glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, mTexture[1], 0, 0);
+    EXPECT_GL_NO_ERROR();
+    glReadPixels(0, 0, width, height, GL_RED_INTEGER, GL_UNSIGNED_INT, outputValues[1]);
+    EXPECT_GL_NO_ERROR();
+
+    for (int i = 0; i < width * height; i++)
+    {
+        EXPECT_EQ(expectedValue, outputValues[0][i]);
+        EXPECT_EQ(expectedValue, outputValues[1][i]);
+    }
+}
+
 // When declare a image array without a binding qualifier, all elements are bound to unit zero.
 TEST_P(ComputeShaderTest, ImageArrayWithoutBindingQualifier)
 {
@@ -1025,8 +1169,6 @@ void main()
 // Test that texelFetch works well in compute shader.
 TEST_P(ComputeShaderTest, TexelFetchFunction)
 {
-    // http://anglebug.com/4092
-    ANGLE_SKIP_TEST_IF(isSwiftshader());
     constexpr char kCS[] = R"(#version 310 es
 layout(local_size_x=16, local_size_y=12) in;
 precision highp usampler2D;
@@ -1095,8 +1237,6 @@ void main()
 // Test that texture function works well in compute shader.
 TEST_P(ComputeShaderTest, TextureFunction)
 {
-    // http://anglebug.com/4092
-    ANGLE_SKIP_TEST_IF(isSwiftshader());
     constexpr char kCS[] = R"(#version 310 es
 layout(local_size_x=16, local_size_y=16) in;
 precision highp usampler2D;
@@ -3768,6 +3908,7 @@ void main(void) {
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     EXPECT_GL_NO_ERROR();
 
+    glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     glUseProgram(csProgram);
     glDispatchCompute(1, 1, 1);
     glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -4579,8 +4720,404 @@ void main()
     EXPECT_GL_NO_ERROR();
 }
 
+// Verify the CS doesn't overwrite the mapped buffer data.
+TEST_P(ComputeShaderTest, ImageBufferMapWrite)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_OES_texture_buffer"));
+
+    // Claims to support GL_OES_texture_buffer, but fails compilation of shader because "extension
+    // 'GL_OES_texture_buffer' is not supported".  http://anglebug.com/5832
+    ANGLE_SKIP_TEST_IF(IsQualcomm() && IsOpenGLES());
+
+    constexpr char kComputeImageBuffer[] = R"(#version 310 es
+#extension GL_OES_texture_buffer : require
+layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
+layout(rgba32f, binding = 0) uniform highp writeonly imageBuffer dst;
+uniform vec4 uniformData;
+void main()
+{
+    imageStore(dst, int(gl_GlobalInvocationID.x), uniformData);
+})";
+
+    GLProgram program;
+    program.makeCompute(kComputeImageBuffer);
+    glUseProgram(program);
+
+    GLBuffer textureBufferStorage;
+    GLTexture texture;
+    constexpr std::array<float, 4> kInitData = {1.0, 0.0, 0.0, 1.0};
+
+    glBindBuffer(GL_TEXTURE_BUFFER, textureBufferStorage);
+    glBufferData(GL_TEXTURE_BUFFER, sizeof(kInitData), kInitData.data(), GL_STATIC_DRAW);
+    EXPECT_GL_NO_ERROR();
+
+    glBindTexture(GL_TEXTURE_BUFFER, texture);
+    glTexBufferEXT(GL_TEXTURE_BUFFER, GL_RGBA32F, textureBufferStorage);
+    glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+    EXPECT_GL_NO_ERROR();
+
+    constexpr std::array<float, 4> kComputeShaderData = {0.0, 1.0, 0.0, 1.0};
+    GLint uniformLocation = glGetUniformLocation(program, "uniformData");
+    ASSERT_NE(uniformLocation, -1);
+    glUniform4f(uniformLocation, kComputeShaderData[0], kComputeShaderData[1],
+                kComputeShaderData[2], kComputeShaderData[3]);
+    EXPECT_GL_NO_ERROR();
+
+    // Write to the buffer with the CS.
+    glDispatchCompute(1, 1, 1);
+
+    // Issue the appropriate memory barrier before mapping the buffer.
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+    // Map the buffer and write to it.
+    constexpr std::array<float, 4> kMapData = {0.0, 0.0, 1.0, 1.0};
+    void *mappedBuffer =
+        glMapBufferRange(GL_TEXTURE_BUFFER, 0, sizeof(GLuint) * 3, GL_MAP_WRITE_BIT);
+    memcpy(mappedBuffer, kMapData.data(), sizeof(kMapData));
+    glUnmapBuffer(GL_TEXTURE_BUFFER);
+
+    glFinish();
+
+    // Read back and verify buffer data.
+    std::array<float, 4> bufferData = {0};
+    mappedBuffer = glMapBufferRange(GL_TEXTURE_BUFFER, 0, sizeof(GLuint) * 3, GL_MAP_READ_BIT);
+    memcpy(bufferData.data(), mappedBuffer, sizeof(bufferData));
+    glUnmapBuffer(GL_TEXTURE_BUFFER);
+
+    EXPECT_EQ(bufferData[0], kMapData[0]);
+    EXPECT_EQ(bufferData[1], kMapData[1]);
+    EXPECT_EQ(bufferData[2], kMapData[2]);
+    EXPECT_EQ(bufferData[3], kMapData[3]);
+}
+
+// Test compute shader write to texture buffer followed by texSubData and followed by compute shader
+// write to texture buffer again.
+TEST_P(ComputeShaderTest, ImageBufferMapWriteAndBufferSubData)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_OES_texture_buffer"));
+
+    // Claims to support GL_OES_texture_buffer, but fails compilation of shader because "extension
+    // 'GL_OES_texture_buffer' is not supported".  http://anglebug.com/5832
+    ANGLE_SKIP_TEST_IF(IsQualcomm() && IsOpenGLES());
+
+    // angleporject:6545. Known bug.
+    ANGLE_SKIP_TEST_IF(IsVulkan());
+
+    constexpr char kComputeImageBuffer[] = R"(#version 310 es
+#extension GL_OES_texture_buffer : require
+layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
+layout(rgba32f, binding = 0) uniform highp writeonly imageBuffer dst;
+uniform vec4 uniformData;
+uniform int uniformOffset;
+void main()
+{
+    imageStore(dst, uniformOffset, uniformData);
+})";
+
+    GLProgram program;
+    program.makeCompute(kComputeImageBuffer);
+    glUseProgram(program);
+
+    for (int loop = 0; loop < 2; loop++)
+    {
+        GLBuffer textureBufferStorage;
+        GLTexture texture;
+        constexpr unsigned int kShaderUsedSize    = sizeof(float) * 4;
+        constexpr unsigned int kMiddlePaddingSize = 1024;
+        constexpr unsigned int kBufferSize = kShaderUsedSize + kMiddlePaddingSize + kShaderUsedSize;
+        constexpr unsigned int kOffset0    = 0;
+        constexpr unsigned int kOffset1    = kShaderUsedSize;
+        constexpr unsigned int kOffset2    = kShaderUsedSize + kMiddlePaddingSize;
+
+        glBindBuffer(GL_TEXTURE_BUFFER, textureBufferStorage);
+        glBufferData(GL_TEXTURE_BUFFER, kBufferSize, nullptr, GL_STATIC_DRAW);
+
+        glBindTexture(GL_TEXTURE_BUFFER, texture);
+        glTexBufferEXT(GL_TEXTURE_BUFFER, GL_RGBA32F, textureBufferStorage);
+        glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+        // Write to the buffer with the CS.
+        constexpr std::array<float, 4> kComputeShaderData1 = {0.0, 1.0, 0.0, 1.0};
+        GLint uniformDataLocation = glGetUniformLocation(program, "uniformData");
+        ASSERT_NE(uniformDataLocation, -1);
+        glUniform4f(uniformDataLocation, kComputeShaderData1[0], kComputeShaderData1[1],
+                    kComputeShaderData1[2], kComputeShaderData1[3]);
+        GLint uniformOffsetLocation = glGetUniformLocation(program, "uniformOffset");
+        ASSERT_NE(uniformOffsetLocation, -1);
+        glUniform1i(uniformOffsetLocation, kOffset0 / (sizeof(float) * 4));
+        glDispatchCompute(1, 1, 1);
+        // Issue the appropriate memory barrier before mapping the buffer.
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+        // Write to the buffer with the CS.
+        constexpr std::array<float, 4> kComputeShaderData2 = {1.0, 0.0, 1.0, 1.0};
+        glUniform4f(uniformDataLocation, kComputeShaderData2[0], kComputeShaderData2[1],
+                    kComputeShaderData2[2], kComputeShaderData2[3]);
+        glUniform1i(uniformOffsetLocation, kOffset2 / (sizeof(float) * 4));
+        glDispatchCompute(1, 1, 1);
+
+        if (loop == 1)
+        {
+            // Make write operation finished but read operation pending. We don't care actual
+            // rendering result but just to have a unflushed rendering using the buffer so that it
+            // will appears as pending.
+            glFinish();
+            constexpr char kVS[] = R"(attribute vec4 in_attrib;
+                                    varying vec4 v_attrib;
+                                    void main()
+                                    {
+                                        v_attrib = in_attrib;
+                                        gl_Position = vec4(0.0, 0.0, 0.5, 1.0);
+                                        gl_PointSize = 100.0;
+                                    })";
+            constexpr char kFS[] = R"(precision mediump float;
+                                    varying vec4 v_attrib;
+                                    void main()
+                                    {
+                                        gl_FragColor = v_attrib;
+                                    })";
+            GLuint readProgram   = CompileProgram(kVS, kFS);
+            ASSERT_NE(readProgram, 0U);
+            GLint attribLocation = glGetAttribLocation(readProgram, "in_attrib");
+            ASSERT_NE(attribLocation, -1);
+            glUseProgram(readProgram);
+            ASSERT_GL_NO_ERROR();
+            glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT | GL_ELEMENT_ARRAY_BARRIER_BIT);
+            glBindBuffer(GL_ARRAY_BUFFER, textureBufferStorage);
+            glVertexAttribPointer(attribLocation, 4, GL_UNSIGNED_BYTE, GL_TRUE, 4, nullptr);
+            glEnableVertexAttribArray(attribLocation);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, textureBufferStorage);
+            glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, nullptr);
+            ASSERT_GL_NO_ERROR();
+        }
+
+        // Use subData to update middle portion of data to trigger acquireAndUpdate code path in
+        // ANGLE
+        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+        glBindBuffer(GL_TEXTURE_BUFFER, textureBufferStorage);
+        constexpr unsigned int kMiddlePaddingValue = 0x55555555u;
+        std::vector<unsigned int> kPaddingValues(kMiddlePaddingSize / sizeof(unsigned int),
+                                                 kMiddlePaddingValue);
+        glBufferSubData(GL_TEXTURE_BUFFER, kOffset1, kMiddlePaddingSize, kPaddingValues.data());
+
+        // Read back and verify buffer data.
+        const GLbyte *mappedBuffer = reinterpret_cast<const GLbyte *>(
+            glMapBufferRange(GL_TEXTURE_BUFFER, 0, kBufferSize, GL_MAP_READ_BIT));
+
+        const GLfloat *ptr0 = reinterpret_cast<const GLfloat *>(mappedBuffer);
+        EXPECT_EQ(ptr0[0], kComputeShaderData1[0]);
+        EXPECT_EQ(ptr0[1], kComputeShaderData1[1]);
+        EXPECT_EQ(ptr0[2], kComputeShaderData1[2]);
+        EXPECT_EQ(ptr0[3], kComputeShaderData1[3]);
+
+        const GLuint *ptr1 = reinterpret_cast<const GLuint *>(mappedBuffer + kOffset1);
+        for (unsigned int idx = 0; idx < kMiddlePaddingSize / sizeof(unsigned int); idx++)
+        {
+            EXPECT_EQ(ptr1[idx], kMiddlePaddingValue);
+        }
+
+        const GLfloat *ptr2 = reinterpret_cast<const GLfloat *>(mappedBuffer + kOffset2);
+        EXPECT_EQ(ptr2[0], kComputeShaderData2[0]);
+        EXPECT_EQ(ptr2[1], kComputeShaderData2[1]);
+        EXPECT_EQ(ptr2[2], kComputeShaderData2[2]);
+        EXPECT_EQ(ptr2[3], kComputeShaderData2[3]);
+
+        glUnmapBuffer(GL_TEXTURE_BUFFER);
+        EXPECT_GL_NO_ERROR();
+    }
+}
+
+// Test one texture sampled by fragment shader, then bind it to image, followed by compute
+// shader load this image, and fragment shader read it again.
+TEST_P(ComputeShaderTest, DrawDispatchImageReadDraw)
+{
+
+    constexpr char kVSSource[] = R"(#version 310 es
+in vec4 a_position;
+out vec2 v_texCoord;
+
+void main()
+{
+    gl_Position = vec4(a_position.xy, 0.0, 1.0);
+    v_texCoord = a_position.xy * 0.5 + vec2(0.5);
+})";
+
+    constexpr char kFSSource[] = R"(#version 310 es
+precision mediump float;
+uniform sampler2D u_tex2D;
+in vec2 v_texCoord;
+out vec4 out_FragColor;
+void main()
+{
+    out_FragColor = texture(u_tex2D, v_texCoord);
+})";
+
+    constexpr char kCSSource[] = R"(#version 310 es
+layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
+layout(rgba32f, binding=0) readonly  uniform highp image2D uIn;
+layout(std140, binding=0) buffer buf {
+    vec4 outData;
+};
+
+void main()
+{
+    outData = imageLoad(uIn, ivec2(gl_LocalInvocationID.xy));
+})";
+
+    GLfloat initValue[4] = {1.0, 1.0, 1.0, 1.0};
+
+    // Step 1: Set up a simple 2D Texture rendering loop.
+    GLTexture texture;
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, 1, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL_RGBA, GL_FLOAT, initValue);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    GLBuffer vertexBuffer;
+    GLfloat vertices[] = {-1, -1, 1, -1, -1, 1, 1, 1};
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), vertices, GL_STATIC_DRAW);
+
+    GLBuffer ssbo;
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 16, nullptr, GL_STREAM_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    ANGLE_GL_PROGRAM(program, kVSSource, kFSSource);
+    glUseProgram(program);
+
+    GLint posLoc = glGetAttribLocation(program, "a_position");
+    ASSERT_NE(-1, posLoc);
+
+    glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(posLoc);
+    ASSERT_GL_NO_ERROR();
+    glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    ASSERT_GL_NO_ERROR();
+
+    // Step 2: load this image through compute
+    ANGLE_GL_COMPUTE_PROGRAM(csProgram, kCSSource);
+    glUseProgram(csProgram);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo);
+
+    glDispatchCompute(1, 1, 1);
+    EXPECT_GL_NO_ERROR();
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+    const GLfloat *ptr = reinterpret_cast<const GLfloat *>(
+        glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, 16, GL_MAP_READ_BIT));
+
+    EXPECT_GL_NO_ERROR();
+    for (unsigned int idx = 0; idx < 4; idx++)
+    {
+        EXPECT_EQ(1.0, *(ptr + idx));
+    }
+
+    // Step3: use the first program sample texture again
+    glUseProgram(program);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    ASSERT_GL_NO_ERROR();
+
+    EXPECT_PIXEL_COLOR_EQ(1, 1, GLColor::white);
+}
+
+// Test fragment shader read a image, followed by compute shader sample it.
+TEST_P(ComputeShaderTest, FSReadImageThenCSSample)
+{
+    constexpr char kVSSource[] = R"(#version 310 es
+in vec4 a_position;
+out vec2 v_texCoord;
+void main()
+{
+    gl_Position = vec4(a_position.xy, 0.0, 1.0);
+    v_texCoord = a_position.xy * 0.5 + vec2(0.5);;
+})";
+
+    constexpr char kFSSource[] = R"(#version 310 es
+precision mediump float;
+layout(rgba32f, binding=0) readonly  uniform highp image2D uIn;
+in vec2 v_texCoord;
+out vec4 out_FragColor;
+
+void main()
+{
+    out_FragColor = imageLoad(uIn, ivec2(v_texCoord));
+})";
+
+    constexpr char kCSSource[] = R"(#version 310 es
+layout(local_size_x=1, local_size_y=1, local_size_z=1) in;
+layout(std140, binding=0) buffer buf {
+    vec4 outData;
+};
+uniform sampler2D u_tex2D;
+void main()
+{
+    outData = texture(u_tex2D, vec2(gl_LocalInvocationID.xy));
+})";
+
+    GLfloat initValue[4] = {1.0, 1.0, 1.0, 1.0};
+
+    // Step 1: Set up a simple 2D Texture rendering loop.
+    GLTexture texture;
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, 1, 1);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL_RGBA, GL_FLOAT, initValue);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    GLBuffer vertexBuffer;
+    GLfloat vertices[] = {-1, -1, 1, -1, -1, 1, 1, 1};
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), vertices, GL_STATIC_DRAW);
+
+    GLBuffer ssbo;
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, 16, nullptr, GL_STREAM_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+    ANGLE_GL_PROGRAM(program, kVSSource, kFSSource);
+    glUseProgram(program);
+
+    GLint posLoc = glGetAttribLocation(program, "a_position");
+    ASSERT_NE(-1, posLoc);
+
+    glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(posLoc);
+    ASSERT_GL_NO_ERROR();
+    glBindImageTexture(0, texture, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    ASSERT_GL_NO_ERROR();
+
+    // Step 2: load this image through compute
+    ANGLE_GL_COMPUTE_PROGRAM(csProgram, kCSSource);
+    glUseProgram(csProgram);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo);
+
+    glDispatchCompute(1, 1, 1);
+
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+    const GLfloat *ptr = reinterpret_cast<const GLfloat *>(
+        glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, 16, GL_MAP_READ_BIT));
+
+    EXPECT_GL_NO_ERROR();
+    for (unsigned int idx = 0; idx < 4; idx++)
+    {
+        EXPECT_EQ(1.0, *(ptr + idx));
+    }
+}
+
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ComputeShaderTest);
-ANGLE_INSTANTIATE_TEST_ES31_AND(ComputeShaderTest, WithDirectSPIRVGeneration(ES31_VULKAN()));
+ANGLE_INSTANTIATE_TEST_ES31(ComputeShaderTest);
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ComputeShaderTestES3);
 ANGLE_INSTANTIATE_TEST_ES3(ComputeShaderTestES3);

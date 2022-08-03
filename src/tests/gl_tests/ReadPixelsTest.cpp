@@ -79,8 +79,9 @@ class ReadPixelsPBONVTest : public ReadPixelsTest
     {
         ANGLE_SKIP_TEST_IF(!hasPBOExts());
 
+        mPBOBufferSize = bufferSize;
         glBindBuffer(GL_PIXEL_PACK_BUFFER, mPBO);
-        glBufferData(GL_PIXEL_PACK_BUFFER, bufferSize, nullptr, GL_STATIC_DRAW);
+        glBufferData(GL_PIXEL_PACK_BUFFER, mPBOBufferSize, nullptr, GL_STATIC_DRAW);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
         glDeleteTextures(1, &mTexture);
@@ -110,11 +111,12 @@ class ReadPixelsPBONVTest : public ReadPixelsTest
                IsGLExtensionEnabled("GL_EXT_texture_storage");
     }
 
-    GLuint mPBO       = 0;
-    GLuint mTexture   = 0;
-    GLuint mFBO       = 0;
-    GLuint mFBOWidth  = 0;
-    GLuint mFBOHeight = 0;
+    GLuint mPBO           = 0;
+    GLuint mTexture       = 0;
+    GLuint mFBO           = 0;
+    GLuint mFBOWidth      = 0;
+    GLuint mFBOHeight     = 0;
+    GLuint mPBOBufferSize = 0;
 };
 
 // Test basic usage of PBOs.
@@ -140,7 +142,7 @@ TEST_P(ReadPixelsPBONVTest, Basic)
     glBindBuffer(GL_PIXEL_PACK_BUFFER, mPBO);
     glReadPixels(0, 0, 16, 16, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
-    void *mappedPtr    = glMapBufferRangeEXT(GL_PIXEL_PACK_BUFFER, 0, 32, GL_MAP_READ_BIT);
+    void *mappedPtr = glMapBufferRangeEXT(GL_PIXEL_PACK_BUFFER, 0, mPBOBufferSize, GL_MAP_READ_BIT);
     GLColor *dataColor = static_cast<GLColor *>(mappedPtr);
     EXPECT_GL_NO_ERROR();
 
@@ -274,7 +276,7 @@ TEST_P(ReadPixelsPBONVTest, ReadFromFBOWithDataOffset)
 
     // Read (height - 1) rows offset by width * 4.
     glReadPixels(0, 0, mFBOWidth, mFBOHeight - 1, GL_RGBA, GL_UNSIGNED_BYTE,
-                 reinterpret_cast<void *>(mFBOWidth * 4));
+                 reinterpret_cast<void *>(mFBOWidth * static_cast<uintptr_t>(4)));
 
     void *mappedPtr =
         glMapBufferRangeEXT(GL_PIXEL_PACK_BUFFER, 0, 4 * mFBOWidth * mFBOHeight, GL_MAP_READ_BIT);
@@ -658,6 +660,57 @@ TEST_P(ReadPixelsPBODrawTest, DrawWithPBO)
     EXPECT_EQ(GLColor(1, 2, 3, 4), color);
 }
 
+// Test that we can correctly update a buffer bound to the vertex stage with PBO.
+TEST_P(ReadPixelsPBODrawTest, UpdateVertexArrayWithPixelPack)
+{
+    glUseProgram(mProgram);
+    glViewport(0, 0, 1, 1);
+    glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
+    ASSERT_GL_NO_ERROR();
+
+    // First draw with pre-defined data.
+    std::array<float, 2> positionData = {0.5f, 0.5f};
+
+    glBindBuffer(GL_ARRAY_BUFFER, mPositionVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, positionData.size() * sizeof(positionData[0]),
+                    positionData.data());
+    ASSERT_GL_NO_ERROR();
+
+    GLint positionLocation = glGetAttribLocation(mProgram, "aPosition");
+    EXPECT_NE(-1, positionLocation);
+
+    GLint testLocation = glGetAttribLocation(mProgram, "aTest");
+    EXPECT_NE(-1, testLocation);
+
+    glVertexAttribPointer(positionLocation, 2, GL_FLOAT, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(positionLocation);
+    ASSERT_GL_NO_ERROR();
+
+    glBindBuffer(GL_ARRAY_BUFFER, mPBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(GLColor), &GLColor::red);
+    glVertexAttribPointer(testLocation, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, 0);
+    glEnableVertexAttribArray(testLocation);
+    ASSERT_GL_NO_ERROR();
+
+    glDrawArrays(GL_POINTS, 0, 1);
+    ASSERT_GL_NO_ERROR();
+
+    // Update the buffer bound to the VAO with a PBO.
+    glBindTexture(GL_TEXTURE_2D, mTexture);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &GLColor::green);
+    ASSERT_GL_NO_ERROR();
+
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, mPBO);
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    ASSERT_GL_NO_ERROR();
+
+    // Draw again and verify the VAO has the updated data.
+    glDrawArrays(GL_POINTS, 0, 1);
+
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
 class ReadPixelsMultisampleTest : public ReadPixelsTest
 {
   protected:
@@ -990,8 +1043,63 @@ TEST_P(ReadPixelsErrorTest, ReadBufferIsNone)
     glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
     glReadBuffer(GL_NONE);
     std::vector<GLubyte> pixels(4);
+    EXPECT_GL_NO_ERROR();
     glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
     EXPECT_GL_ERROR(GL_INVALID_OPERATION);
+}
+
+// a test class to be used for error checking of glReadPixels with WebGLCompatibility
+class ReadPixelsWebGLErrorTest : public ReadPixelsTest
+{
+  protected:
+    ReadPixelsWebGLErrorTest() : mTexture(0), mFBO(0) { setWebGLCompatibilityEnabled(true); }
+
+    void testSetUp() override
+    {
+        glGenTextures(1, &mTexture);
+        glBindTexture(GL_TEXTURE_2D, mTexture);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 4, 1);
+
+        glGenFramebuffers(1, &mFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture, 0);
+        ASSERT_GL_FRAMEBUFFER_COMPLETE(GL_FRAMEBUFFER);
+
+        ASSERT_GL_NO_ERROR();
+    }
+
+    void testTearDown() override
+    {
+        glDeleteTextures(1, &mTexture);
+        glDeleteFramebuffers(1, &mFBO);
+    }
+
+    GLuint mTexture;
+    GLuint mFBO;
+};
+
+// Test that WebGL context readpixels generates an error when reading GL_UNSIGNED_INT_24_8 type.
+TEST_P(ReadPixelsWebGLErrorTest, TypeIsUnsignedInt24_8)
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture, 0);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    std::vector<GLuint> pixels(4);
+    EXPECT_GL_NO_ERROR();
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_INT_24_8, pixels.data());
+    EXPECT_GL_ERROR(GL_INVALID_ENUM);
+}
+
+// Test that WebGL context readpixels generates an error when reading GL_DEPTH_COMPONENT format.
+TEST_P(ReadPixelsWebGLErrorTest, FormatIsDepthComponent)
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, mFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture, 0);
+    glReadBuffer(GL_COLOR_ATTACHMENT0);
+    std::vector<GLubyte> pixels(4);
+    EXPECT_GL_NO_ERROR();
+    glReadPixels(0, 0, 1, 1, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, pixels.data());
+    EXPECT_GL_ERROR(GL_INVALID_ENUM);
 }
 
 }  // anonymous namespace
@@ -1005,7 +1113,8 @@ GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReadPixelsPBOTest);
 ANGLE_INSTANTIATE_TEST_ES3(ReadPixelsPBOTest);
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReadPixelsPBODrawTest);
-ANGLE_INSTANTIATE_TEST_ES3(ReadPixelsPBODrawTest);
+ANGLE_INSTANTIATE_TEST_ES3_AND(ReadPixelsPBODrawTest,
+                               ES3_VULKAN().enable(Feature::ForceFallbackFormat));
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReadPixelsMultisampleTest);
 ANGLE_INSTANTIATE_TEST_ES3(ReadPixelsMultisampleTest);
@@ -1015,3 +1124,6 @@ ANGLE_INSTANTIATE_TEST_ES3(ReadPixelsTextureTest);
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReadPixelsErrorTest);
 ANGLE_INSTANTIATE_TEST_ES3(ReadPixelsErrorTest);
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ReadPixelsWebGLErrorTest);
+ANGLE_INSTANTIATE_TEST_ES3(ReadPixelsWebGLErrorTest);

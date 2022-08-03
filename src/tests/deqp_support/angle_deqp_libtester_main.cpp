@@ -39,7 +39,7 @@ std::string GetLogFileName(std::string deqpDataDir)
 {
 #if (DE_OS == DE_OS_ANDROID)
     // On Android executable dir is not writable, so use data dir instead
-    return deqpDataDir + "/" + g_cmdLine->getLogFileName();
+    return std::string("/data/data/com.android.angle.test/") + g_cmdLine->getLogFileName();
 #else
     return g_cmdLine->getLogFileName();
 #endif
@@ -59,7 +59,7 @@ ANGLE_LIBTESTER_EXPORT bool deqp_libtester_init_platform(int argc,
         setvbuf(stdout, DE_NULL, _IOLBF, 4 * 1024);
 #endif
         g_platform = CreateANGLEPlatform(reinterpret_cast<angle::LogErrorFunc>(logErrorFunc),
-                                         options.preRotation, options.enableDirectSPIRVGen);
+                                         options.preRotation);
 
         if (!deSetRoundingMode(DE_ROUNDINGMODE_TO_NEAREST_EVEN))
         {

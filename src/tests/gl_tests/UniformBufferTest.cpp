@@ -860,6 +860,51 @@ void main()
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::cyan);
 }
 
+// Test four bindings of the same uniform buffer.
+TEST_P(UniformBufferTest31, FourBindingsSameBuffer)
+{
+    // Create a program with accesses from four UBO binding points.
+    constexpr char kFS[] = R"(#version 310 es
+precision mediump float;
+layout (binding = 0) uniform block0 {
+    vec4 color;
+} b0;
+layout (binding = 1) uniform block1 {
+    vec4 color;
+} b1;
+layout (binding = 2) uniform block2 {
+    vec4 color;
+} b2;
+layout (binding = 3) uniform block3 {
+    vec4 color;
+} b3;
+
+out vec4 outColor;
+
+void main() {
+    outColor = b0.color + b1.color + b2.color + b3.color;
+})";
+
+    // Create a UBO.
+    constexpr GLfloat uboData[4] = {0.0, 0.25, 0.0, 0.25};
+    GLBuffer ubo;
+    glBindBuffer(GL_UNIFORM_BUFFER, ubo);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(uboData), uboData, GL_STATIC_READ);
+
+    // Bind the same UBO to all four binding points.
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 1, ubo);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, ubo);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 3, ubo);
+
+    ANGLE_GL_PROGRAM(uboProgram, essl31_shaders::vs::Simple(), kFS);
+    drawQuad(uboProgram, essl1_shaders::PositionAttrib(), 0.5f, 1.0f);
+    EXPECT_GL_NO_ERROR();
+
+    // Four {0, 0.25, 0, 0.25} pixels should sum to green.
+    EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
+}
+
 // Test with a block containing an array of structs.
 TEST_P(UniformBufferTest, BlockContainingArrayOfStructs)
 {
@@ -1432,7 +1477,10 @@ TEST_P(UniformBufferTest, Std140UniformBlockWithRowMajorQualifierOnStruct)
     EXPECT_PIXEL_COLOR_NEAR(0, 0, GLColor(255, 64, 128, 32), 5);
 }
 
-constexpr char kFragmentShader[] = R"(#version 300 es
+// Regression test for a dirty bit bug in ANGLE. See http://crbug.com/792966
+TEST_P(UniformBufferTest, SimpleBindingChange)
+{
+    constexpr char kFragmentShader[] = R"(#version 300 es
 precision mediump float;
 
 layout (std140) uniform color_ubo
@@ -1446,9 +1494,6 @@ void main()
   fragColor = color;
 })";
 
-// Regression test for a dirty bit bug in ANGLE. See http://crbug.com/792966
-TEST_P(UniformBufferTest, SimpleBindingChange)
-{
     // http://anglebug.com/2287
     ANGLE_SKIP_TEST_IF(IsOSX() && IsNVIDIA() && IsDesktopOpenGL());
 
@@ -1497,6 +1542,20 @@ TEST_P(UniformBufferTest, SimpleBindingChange)
 // Regression test for a dirty bit bug in ANGLE. Same as above but for the indexed bindings.
 TEST_P(UniformBufferTest, SimpleBufferChange)
 {
+    constexpr char kFragmentShader[] = R"(#version 300 es
+precision mediump float;
+
+layout (std140) uniform color_ubo
+{
+  vec4 color;
+};
+
+out vec4 fragColor;
+void main()
+{
+  fragColor = color;
+})";
+
     ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), kFragmentShader);
 
     glBindAttribLocation(program, 0, essl3_shaders::PositionAttrib());
@@ -1541,6 +1600,20 @@ TEST_P(UniformBufferTest, SimpleBufferChange)
 // update in the State Manager class.
 TEST_P(UniformBufferTest, DependentBufferChange)
 {
+    constexpr char kFragmentShader[] = R"(#version 300 es
+precision mediump float;
+
+layout (std140) uniform color_ubo
+{
+  vec4 color;
+};
+
+out vec4 fragColor;
+void main()
+{
+  fragColor = color;
+})";
+
     ANGLE_GL_PROGRAM(program, essl3_shaders::vs::Simple(), kFragmentShader);
 
     glBindAttribLocation(program, 0, essl3_shaders::PositionAttrib());
@@ -1585,6 +1658,20 @@ TEST_P(UniformBufferTest, DependentBufferChange)
 // regression in http://anglebug.com/3388
 TEST_P(UniformBufferTest, SizeOverMaxBlockSize)
 {
+    constexpr char kFragmentShader[] = R"(#version 300 es
+precision mediump float;
+
+layout (std140) uniform color_ubo
+{
+  vec4 color;
+};
+
+out vec4 fragColor;
+void main()
+{
+  fragColor = color;
+})";
+
     // Test crashes on Windows AMD OpenGL
     ANGLE_SKIP_TEST_IF(IsAMD() && IsWindows() && IsOpenGL());
     // http://anglebug.com/5382
@@ -1727,9 +1814,6 @@ TEST_P(UniformBufferTest, ManyBlocks)
 {
     // http://anglebug.com/5039
     ANGLE_SKIP_TEST_IF(IsD3D11());
-
-    // http://anglebug.com/5283
-    ANGLE_SKIP_TEST_IF(IsMetal() && IsIntel());
 
     constexpr char kFS[] =
         R"(#version 300 es
