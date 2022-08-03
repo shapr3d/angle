@@ -7,8 +7,8 @@
 //   Helper functions for capture and replay of traces.
 //
 
-#ifndef UTIL_FRAME_CAPTURE_TEST_UTILS_H_
-#define UTIL_FRAME_CAPTURE_TEST_UTILS_H_
+#ifndef UTIL_CAPTURE_FRAME_CAPTURE_TEST_UTILS_H_
+#define UTIL_CAPTURE_FRAME_CAPTURE_TEST_UTILS_H_
 
 #include <iostream>
 #include <memory>
@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "common/angleutils.h"
+#include "common/debug.h"
 #include "common/system_utils.h"
 
 #define USE_SYSTEM_ZLIB
@@ -50,15 +51,17 @@ inline uint8_t *DecompressBinaryData(const std::vector<uint8_t> &compressedData)
     return uncompressedData.release();
 }
 
-using DecompressCallback = uint8_t *(*)(const std::vector<uint8_t> &);
+using DecompressCallback              = uint8_t *(*)(const std::vector<uint8_t> &);
+using ValidateSerializedStateCallback = void (*)(const char *, const char *, uint32_t);
 
-using SetBinaryDataDecompressCallbackFunc = void (*)(DecompressCallback);
-using SetBinaryDataDirFunc                = void (*)(const char *);
-using SetupReplayFunc                     = void (*)();
-using ReplayFrameFunc                     = void (*)(uint32_t);
-using ResetReplayFunc                     = void (*)();
-using FinishReplayFunc                    = void (*)();
-using GetSerializedContextStateFunc       = const char *(*)(uint32_t);
+using SetBinaryDataDecompressCallbackFunc    = void (*)(DecompressCallback);
+using SetBinaryDataDirFunc                   = void (*)(const char *);
+using SetupReplayFunc                        = void (*)();
+using ReplayFrameFunc                        = void (*)(uint32_t);
+using ResetReplayFunc                        = void (*)();
+using FinishReplayFunc                       = void (*)();
+using GetSerializedContextStateFunc          = const char *(*)(uint32_t);
+using SetValidateSerializedStateCallbackFunc = void (*)(ValidateSerializedStateCallback);
 
 class TraceLibrary
 {
@@ -79,7 +82,10 @@ class TraceLibrary
         mTraceLibrary.reset(OpenSharedLibrary(traceName.c_str(), SearchType::ModuleDir));
     }
 
-    bool valid() const { return mTraceLibrary != nullptr; }
+    bool valid() const
+    {
+        return (mTraceLibrary != nullptr) && (mTraceLibrary->getNative() != nullptr);
+    }
 
     void setBinaryDataDir(const char *dataDir)
     {
@@ -104,6 +110,12 @@ class TraceLibrary
         return callFunc<GetSerializedContextStateFunc>("GetSerializedContextState", frameIndex);
     }
 
+    void setValidateSerializedStateCallback(ValidateSerializedStateCallback callback)
+    {
+        return callFunc<SetValidateSerializedStateCallbackFunc>(
+            "SetValidateSerializedStateCallback", callback);
+    }
+
   private:
     template <typename FuncT, typename... ArgsT>
     typename std::result_of<FuncT(ArgsT...)>::type callFunc(const char *funcName, ArgsT... args)
@@ -121,6 +133,37 @@ class TraceLibrary
     std::unique_ptr<Library> mTraceLibrary;
 };
 
+static constexpr size_t kTraceInfoMaxNameLen = 128;
+
+struct TraceInfo
+{
+    char name[kTraceInfoMaxNameLen];
+    uint32_t contextClientMajorVersion;
+    uint32_t contextClientMinorVersion;
+    uint32_t frameStart;
+    uint32_t frameEnd;
+    uint32_t drawSurfaceWidth;
+    uint32_t drawSurfaceHeight;
+    uint32_t drawSurfaceColorSpace;
+    uint32_t displayPlatformType;
+    uint32_t displayDeviceType;
+    int configRedBits;
+    int configBlueBits;
+    int configGreenBits;
+    int configAlphaBits;
+    int configDepthBits;
+    int configStencilBits;
+    bool isBinaryDataCompressed;
+    bool areClientArraysEnabled;
+    bool isBindGeneratesResourcesEnabled;
+    bool isWebGLCompatibilityEnabled;
+    bool isRobustResourceInitEnabled;
+};
+
+bool LoadTraceNamesFromJSON(const std::string jsonFilePath, std::vector<std::string> *namesOut);
+bool LoadTraceInfoFromJSON(const std::string &traceName,
+                           const std::string &traceJsonPath,
+                           TraceInfo *traceInfoOut);
 }  // namespace angle
 
-#endif  // UTIL_FRAME_CAPTURE_TEST_UTILS_H_
+#endif  // UTIL_CAPTURE_FRAME_CAPTURE_TEST_UTILS_H_
