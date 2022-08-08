@@ -12,10 +12,6 @@
 #include "common/angleutils.h"
 #include "common/platform.h"
 
-#ifdef ANGLE_PLATFORM_WINDOWS
-#    include <windows.h>
-#endif
-
 namespace gl
 {
 class Context;
