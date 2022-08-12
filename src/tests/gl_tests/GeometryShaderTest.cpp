@@ -94,6 +94,9 @@ class GeometryShaderTest : public ANGLETest
 class GeometryShaderTestES3 : public ANGLETest
 {};
 
+class GeometryShaderTestES32 : public ANGLETest
+{};
+
 // Verify that Geometry Shader cannot be created in an OpenGL ES 3.0 context.
 TEST_P(GeometryShaderTestES3, CreateGeometryShaderInES3)
 {
@@ -138,6 +141,42 @@ void main()
     glDeleteShader(geometryShader);
     glDeleteProgram(programID);
 
+    EXPECT_GL_NO_ERROR();
+}
+
+// Verify that Geometry Shader can be compiled when geometry shader array input size
+// is set after shader input variables.
+// http://anglebug.com/7125 GFXBench Car Chase uses this pattern
+TEST_P(GeometryShaderTest, DeferredSetOfArrayInputSize)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_geometry_shader"));
+    // "layout (invocations = 3, triangles) in;" should be declared before "in vec4 texcoord [];",
+    // but here it is declared later.
+    constexpr char kGS[]  = R"(#version 310 es
+#extension GL_EXT_geometry_shader : require
+in vec4 texcoord[];
+out vec4 o_texcoord;
+layout (invocations = 3, triangles_adjacency) in;
+layout (triangle_strip, max_vertices = 3) out;
+void main()
+{
+    int n;
+    for (n = 0; n < gl_in.length(); n++)
+    {
+        gl_Position = gl_in[n].gl_Position;
+        gl_Layer   = gl_InvocationID;
+        o_texcoord = texcoord[n];
+        EmitVertex();
+    }
+    EndPrimitive();
+})";
+    GLuint geometryShader = CompileShader(GL_GEOMETRY_SHADER_EXT, kGS);
+    EXPECT_NE(0u, geometryShader);
+    GLuint programID = glCreateProgram();
+    glAttachShader(programID, geometryShader);
+    glDetachShader(programID, geometryShader);
+    glDeleteShader(geometryShader);
+    glDeleteProgram(programID);
     EXPECT_GL_NO_ERROR();
 }
 
@@ -1407,6 +1446,89 @@ void main()
     EXPECT_PIXEL_RECT_EQ(w / 2, 0, w / 2, h / 2, GLColor::red);
 }
 
+// Verify that we can have the max amount of uniforms with a geometry shader.
+TEST_P(GeometryShaderTestES32, MaxGeometryImageUniforms)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_EXT_geometry_shader"));
+
+    GLint maxGeometryImageUnits;
+    glGetIntegerv(GL_MAX_GEOMETRY_IMAGE_UNIFORMS_EXT, &maxGeometryImageUnits);
+
+    const GLchar *vertString = essl31_shaders::vs::Simple();
+    const GLchar *fragString = R"(#version 310 es
+precision highp float;
+out vec4 my_FragColor;
+void main()
+{
+    my_FragColor = vec4(1.0);
+})";
+
+    std::stringstream geomStringStream;
+
+    geomStringStream << R"(#version 310 es
+#extension GL_OES_geometry_shader : require
+layout (points)                   in;
+layout (points, max_vertices = 1) out;
+
+precision highp iimage2D;
+
+ivec4 counter = ivec4(0);
+)";
+
+    for (GLint index = 0; index < maxGeometryImageUnits; ++index)
+    {
+        geomStringStream << "layout(binding = " << index << ", r32i) uniform iimage2D img" << index
+                         << ";" << std::endl;
+    }
+
+    geomStringStream << R"(
+void main()
+{
+)";
+
+    for (GLint index = 0; index < maxGeometryImageUnits; ++index)
+    {
+        geomStringStream << "counter += imageLoad(img" << index << ", ivec2(0, 0));" << std::endl;
+    }
+
+    geomStringStream << R"(
+    gl_Position = vec4(float(counter.x), 0.0, 0.0, 1.0);
+    EmitVertex();
+}
+)";
+
+    ANGLE_GL_PROGRAM_WITH_GS(program, vertString, geomStringStream.str().c_str(), fragString);
+    EXPECT_GL_NO_ERROR();
+
+    glClearColor(1.0, 0, 0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(program);
+
+    std::vector<GLTexture> textures(maxGeometryImageUnits);
+    for (GLint index = 0; index < maxGeometryImageUnits; ++index)
+    {
+        GLint value = index + 1;
+
+        glBindTexture(GL_TEXTURE_2D, textures[index]);
+
+        glTexStorage2D(GL_TEXTURE_2D, 1 /*levels*/, GL_R32I, 1 /*width*/, 1 /*height*/);
+
+        glTexSubImage2D(GL_TEXTURE_2D, 0 /*level*/, 0 /*xoffset*/, 0 /*yoffset*/, 1 /*width*/,
+                        1 /*height*/, GL_RED_INTEGER, GL_INT, &value);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        glBindImageTexture(index, textures[index], 0 /*level*/, GL_FALSE /*is layered?*/,
+                           0 /*layer*/, GL_READ_ONLY, GL_R32I);
+    }
+
+    glDrawArrays(GL_POINTS, 0, 3);
+    EXPECT_GL_NO_ERROR();
+}
+
 // Verify that depth viewport transform applies to the geometry shader stage if present.
 TEST_P(GeometryShaderTest, DepthViewportTransform)
 {
@@ -1493,9 +1615,6 @@ TEST_P(GeometryShaderTest, RecompileSeparableVSWithVaryings)
 
     // Errors in D3D11/GL. No plans to fix this.
     ANGLE_SKIP_TEST_IF(!IsVulkan());
-
-    // http://anglebug.com/5506
-    ANGLE_SKIP_TEST_IF(IsVulkan());
 
     const char *kVS = R"(#version 310 es
 precision mediump float;
@@ -1769,8 +1888,10 @@ ANGLE_INSTANTIATE_TEST_ES3(GeometryShaderTestES3);
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(GeometryShaderTest);
 ANGLE_INSTANTIATE_TEST_ES31_AND(GeometryShaderTest,
-                                WithEmulatedPrerotation(ES31_VULKAN(), 90),
-                                WithEmulatedPrerotation(ES31_VULKAN(), 180),
-                                WithEmulatedPrerotation(ES31_VULKAN(), 270),
-                                WithDirectSPIRVGeneration(ES31_VULKAN()));
+                                ES31_VULKAN().enable(Feature::EmulatedPrerotation90),
+                                ES31_VULKAN().enable(Feature::EmulatedPrerotation180),
+                                ES31_VULKAN().enable(Feature::EmulatedPrerotation270));
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(GeometryShaderTestES32);
+ANGLE_INSTANTIATE_TEST_ES32(GeometryShaderTestES32);
 }  // namespace

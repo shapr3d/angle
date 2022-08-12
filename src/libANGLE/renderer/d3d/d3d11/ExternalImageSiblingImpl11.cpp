@@ -109,6 +109,7 @@ angle::Result ExternalImageSiblingImpl11::getAttachmentRenderTarget(
 }
 
 angle::Result ExternalImageSiblingImpl11::initializeContents(const gl::Context *context,
+                                                             GLenum binding,
                                                              const gl::ImageIndex &imageIndex)
 {
     UNREACHABLE();
@@ -158,7 +159,7 @@ angle::Result ExternalImageSiblingImpl11::createRenderTarget(const gl::Context *
         }
 
         ANGLE_TRY(mRenderer->allocateResource(context11, rtvDesc, mTexture.get(), &rtv));
-        rtv.setDebugName("getAttachmentRenderTarget.RTV");
+        rtv.setInternalName("getAttachmentRenderTarget.RTV");
     }
 
     d3d11::SharedSRV srv;
@@ -198,7 +199,7 @@ angle::Result ExternalImageSiblingImpl11::createRenderTarget(const gl::Context *
         }
 
         ANGLE_TRY(mRenderer->allocateResource(context11, srvDesc, mTexture.get(), &srv));
-        srv.setDebugName("getAttachmentRenderTarget.SRV");
+        srv.setInternalName("getAttachmentRenderTarget.SRV");
     }
     d3d11::SharedSRV blitSrv = srv.makeCopy();
 

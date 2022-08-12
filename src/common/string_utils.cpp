@@ -260,6 +260,42 @@ bool ReplaceSubstring(std::string *str,
     return true;
 }
 
+int ReplaceAllSubstrings(std::string *str,
+                         const std::string &substring,
+                         const std::string &replacement)
+{
+    int count = 0;
+    while (ReplaceSubstring(str, substring, replacement))
+    {
+        count++;
+    }
+    return count;
+}
+
+std::string ToCamelCase(const std::string &str)
+{
+    std::string result;
+
+    bool lastWasUnderscore = false;
+    for (char c : str)
+    {
+        if (c == '_')
+        {
+            lastWasUnderscore = true;
+            continue;
+        }
+
+        if (lastWasUnderscore)
+        {
+            c                 = static_cast<char>(std::toupper(c));
+            lastWasUnderscore = false;
+        }
+        result += c;
+    }
+
+    return result;
+}
+
 std::vector<std::string> GetStringsFromEnvironmentVarOrAndroidProperty(const char *varName,
                                                                        const char *propertyName,
                                                                        const char *separator)

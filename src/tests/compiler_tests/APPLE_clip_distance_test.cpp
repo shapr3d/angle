@@ -109,11 +109,52 @@ TEST_P(APPLEClipDistanceTest, CompileSucceedsVulkan)
     InitializeCompiler(SH_SPIRV_VULKAN_OUTPUT);
     EXPECT_TRUE(TestShaderCompile(EXTPragma));
 }
+
+// Test that the SPIR-V gen path can compile a shader when this extension is not supported.
+TEST_P(APPLEClipDistanceTest, CompileSucceedsWithoutExtSupportVulkan)
+{
+    mResources.APPLE_clip_distance = 0;
+    mResources.MaxClipDistances    = 0;
+    mResources.MaxCullDistances    = 0;
+
+    InitializeCompiler(SH_SPIRV_VULKAN_OUTPUT);
+
+    constexpr char kNoClipCull[] = R"(
+    void main()
+    {
+        gl_Position = vec4(0);
+    })";
+    const char *shaderStrings[]  = {kNoClipCull};
+
+    bool success = sh::Compile(mCompiler, shaderStrings, 1, SH_OBJECT_CODE);
+    if (success)
+    {
+        ::testing::AssertionSuccess() << "Compilation success";
+    }
+    else
+    {
+        ::testing::AssertionFailure() << sh::GetInfoLog(mCompiler);
+    }
+
+    EXPECT_TRUE(success);
+}
 #endif
 
 #if defined(ANGLE_ENABLE_METAL)
-// With extension flag and extension directive, compiling using TranslatorMetal succeeds.
+// With extension flag and extension directive, compiling using TranslatorMetalDirect succeeds.
 TEST_P(APPLEClipDistanceTest, CompileSucceedsMetal)
+{
+    mResources.APPLE_clip_distance = 1;
+    mResources.MaxClipDistances    = 8;
+
+    InitializeCompiler(SH_MSL_METAL_OUTPUT);
+    EXPECT_TRUE(TestShaderCompile(EXTPragma));
+}
+#endif
+
+#if defined(ANGLE_ENABLE_METAL_SPIRV)
+// With extension flag and extension directive, compiling using TranslatorMetal succeeds.
+TEST_P(APPLEClipDistanceTest, CompileSucceedsMetalSPIRV)
 {
     mResources.APPLE_clip_distance = 1;
     mResources.MaxClipDistances    = 8;

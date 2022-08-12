@@ -70,8 +70,8 @@ function generate_Android_bp_file() {
             # Disable histogram/protobuf support
             "angle_has_histograms = false"
 
-            # Disable _LIBCPP_ABI_UNSTABLE, since it breaks std::string
-            "libcxx_abi_unstable = false"
+            # Use system lib(std)c++, since the Chromium library breaks std::string
+            "use_custom_libcxx = false"
 
             # rapidJSON is used for ANGLE's frame capture (among other things), which is unnecessary for AOSP builds.
             "angle_has_rapidjson = false"
@@ -111,6 +111,7 @@ git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git ${DEP
 export PATH=`pwd`/${DEPOT_TOOLS_DIR}:$PATH
 
 third_party_deps=(
+    "build"
     "third_party/abseil-cpp"
     "third_party/vulkan-deps/glslang/src"
     "third_party/vulkan-deps/spirv-headers/src"
@@ -118,6 +119,11 @@ third_party_deps=(
     "third_party/vulkan-deps/vulkan-headers/src"
     "third_party/vulkan_memory_allocator"
     "third_party/zlib"
+)
+
+root_add_deps=(
+  "build"
+  "third_party"
 )
 
 # Only add the parts of NDK and vulkan-deps that are required by ANGLE. The entire dep is too large.
@@ -138,22 +144,15 @@ generate_Android_bp_file
 
 # Delete all unsupported 3rd party dependencies. Do this after generate_Android_bp_file, so
 # it has access to all of the necessary BUILD.gn files.
-# Any 3rd party dependencies that are added to this list must have their licenses verified.
-find third_party/ -maxdepth 2 -type d ! -path third_party/ \
-    ! -path 'third_party/abseil-cpp*' \
-    ! -path 'third_party/vulkan-deps' \
-    ! -path 'third_party/vulkan-deps/glslang*' \
-    ! -path 'third_party/vulkan-deps/spirv-headers*' \
-    ! -path 'third_party/vulkan-deps/spirv-tools*' \
-    ! -path 'third_party/vulkan-deps/vulkan-headers*' \
-    ! -path 'third_party/vulkan_memory_allocator*' \
-    ! -path 'third_party/zlib*' \
-    -print0 | xargs --null rm -rf
-# Special handling for zlib's contrib/ (third_party) folder, since there are some
-# missing license files.
-find third_party/zlib/contrib/ -maxdepth 1 -type d ! -path third_party/zlib/contrib/ \
-    ! -path 'third_party/zlib/contrib/optimizations*' \
-    -print0 | xargs --null rm -rf
+unsupported_third_party_deps=(
+   "third_party/jdk"
+   "third_party/llvm-build"
+   "third_party/android_build_tools"
+   "third_party/android_sdk"
+)
+for unsupported_third_party_dep in "${unsupported_third_party_deps[@]}"; do
+   rm -rf "$unsupported_third_party_dep"
+done
 
 git add Android.bp
 
@@ -164,15 +163,10 @@ for dep in "${third_party_deps[@]}"; do
 done
 
 extra_removal_files=(
-   # Some third_party deps have OWNERS files which contains users that have not logged into
-   # the Android gerrit. Repo cannot upload with these files present.
-   "third_party/abseil-cpp/OWNERS"
-   "third_party/vulkan_memory_allocator/OWNERS"
-   "third_party/zlib/OWNERS"
-   "third_party/zlib/google/OWNERS"
-   "third_party/zlib/contrib/tests/OWNERS"
-   "third_party/zlib/contrib/bench/OWNERS"
-   "third_party/zlib/contrib/tests/fuzzers/OWNERS"
+   # build/linux is hundreds of megs that aren't needed.
+   "build/linux"
+   # Debuggable APKs cannot be merged into AOSP as a prebuilt
+   "build/android/CheckInstallApk-debug.apk"
    # Remove Android.mk files to prevent automated CLs:
    #   "[LSC] Add LOCAL_LICENSE_KINDS to external/angle"
    "Android.mk"
@@ -183,11 +177,13 @@ extra_removal_files=(
 )
 
 for removal_file in "${extra_removal_files[@]}"; do
-   rm -f "$removal_file"
+   rm -rf "$removal_file"
 done
 
 # Add all changes to third_party/ so we delete everything not explicitly allowed.
-git add -f "third_party/*"
+for root_add_dep in "${root_add_deps[@]}"; do
+git add -f "$root_add_dep/*"
+done
 
 # Done with depot_tools
 rm -rf $DEPOT_TOOLS_DIR

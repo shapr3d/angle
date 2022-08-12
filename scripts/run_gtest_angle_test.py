@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env vpython3
 # Copyright 2020 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -8,7 +8,7 @@ The main contract is that the caller passes the arguments:
 
   --isolated-script-test-output=[FILENAME]
 json is written to that file in the format:
-https://chromium.googlesource.com/chromium/src/+/master/docs/testing/json_test_results_format.md
+https://chromium.googlesource.com/chromium/src/+/main/docs/testing/json_test_results_format.md
 
 Optional argument:
 
@@ -26,22 +26,19 @@ run_performance_test.py.
 import argparse
 import json
 import os
+import pathlib
 import shutil
 import sys
 import tempfile
 import traceback
 
-# Add //src/testing into sys.path for importing xvfb and test_env, and
-# //src/testing/scripts for importing common.
-d = os.path.dirname
-THIS_DIR = d(os.path.abspath(__file__))
-ANGLE_SRC_DIR = d(THIS_DIR)
-sys.path.insert(0, os.path.join(ANGLE_SRC_DIR, 'testing'))
-sys.path.insert(0, os.path.join(ANGLE_SRC_DIR, 'testing', 'scripts'))
-CHROMIUM_SRC_DIR = d(d(ANGLE_SRC_DIR))
-sys.path.insert(0, os.path.join(CHROMIUM_SRC_DIR, 'testing'))
-sys.path.insert(0, os.path.join(CHROMIUM_SRC_DIR, 'testing', 'scripts'))
 
+PY_UTILS = str(pathlib.Path(__file__).resolve().parents[1] / 'src' / 'tests' / 'py_utils')
+if PY_UTILS not in sys.path:
+    os.stat(PY_UTILS) and sys.path.insert(0, PY_UTILS)
+import angle_path_util
+
+angle_path_util.AddDepsDirToPath('testing/scripts')
 import common
 import xvfb
 import test_env

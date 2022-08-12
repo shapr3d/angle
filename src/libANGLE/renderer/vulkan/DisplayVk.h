@@ -14,12 +14,14 @@
 #include "libANGLE/renderer/DisplayImpl.h"
 #include "libANGLE/renderer/vulkan/ResourceVk.h"
 #include "libANGLE/renderer/vulkan/vk_cache_utils.h"
+#include "libANGLE/renderer/vulkan/vk_helpers.h"
 #include "libANGLE/renderer/vulkan/vk_utils.h"
 
 namespace rx
 {
-class RendererVk;
+constexpr VkDeviceSize kMaxTotalEmptyBufferBytes = 16 * 1024 * 1024;
 
+class RendererVk;
 using ContextVkSet = std::set<ContextVk *>;
 
 class ShareGroupVk : public ShareGroupImpl
@@ -33,20 +35,29 @@ class ShareGroupVk : public ShareGroupImpl
     // synchronous update to the caches.
     PipelineLayoutCache &getPipelineLayoutCache() { return mPipelineLayoutCache; }
     DescriptorSetLayoutCache &getDescriptorSetLayoutCache() { return mDescriptorSetLayoutCache; }
-    ContextVkSet *getContexts() { return &mContexts; }
-
-    std::vector<vk::ResourceUseList> &&releaseResourceUseLists()
+    const ContextVkSet &getContexts() const { return mContexts; }
+    vk::MetaDescriptorPool &getMetaDescriptorPool(DescriptorSetIndex descriptorSetIndex)
     {
-        return std::move(mResourceUseLists);
+        return mMetaDescriptorPools[descriptorSetIndex];
     }
+
+    void releaseResourceUseLists(const Serial &submitSerial);
     void acquireResourceUseList(vk::ResourceUseList &&resourceUseList)
     {
         mResourceUseLists.emplace_back(std::move(resourceUseList));
     }
 
-    bool isSyncObjectPendingFlush() { return mSyncObjectPendingFlush; }
-    void setSyncObjectPendingFlush() { mSyncObjectPendingFlush = true; }
-    void clearSyncObjectPendingFlush() { mSyncObjectPendingFlush = false; }
+    vk::BufferPool *getDefaultBufferPool(RendererVk *renderer,
+                                         VkDeviceSize size,
+                                         uint32_t memoryTypeIndex);
+    void pruneDefaultBufferPools(RendererVk *renderer);
+    bool isDueForBufferPoolPrune(RendererVk *renderer);
+
+    void calculateTotalBufferCount(size_t *bufferCount, VkDeviceSize *totalSize) const;
+    void logBufferPools() const;
+
+    void addContext(ContextVk *contextVk);
+    void removeContext(ContextVk *contextVk);
 
   private:
     // ANGLE uses a PipelineLayout cache to store compatible pipeline layouts.
@@ -55,6 +66,9 @@ class ShareGroupVk : public ShareGroupImpl
     // DescriptorSetLayouts are also managed in a cache.
     DescriptorSetLayoutCache mDescriptorSetLayoutCache;
 
+    // Descriptor set caches
+    vk::DescriptorSetArray<vk::MetaDescriptorPool> mMetaDescriptorPools;
+
     // The list of contexts within the share group
     ContextVkSet mContexts;
 
@@ -62,7 +76,19 @@ class ShareGroupVk : public ShareGroupImpl
     // ShareGroupVk submits the next command.
     std::vector<vk::ResourceUseList> mResourceUseLists;
 
-    bool mSyncObjectPendingFlush;
+    // The per shared group buffer pools that all buffers should sub-allocate from.
+    vk::BufferPoolPointerArray mDefaultBufferPools;
+
+    // The pool dedicated for small allocations that uses faster buddy algorithm
+    std::unique_ptr<vk::BufferPool> mSmallBufferPool;
+    static constexpr VkDeviceSize kMaxSizeToUseSmallBufferPool = 256;
+
+    // The system time when last pruneEmptyBuffer gets called.
+    double mLastPruneTime;
+
+    // If true, it is expected that a BufferBlock may still in used by textures that outlived
+    // ShareGroup. The non-empty BufferBlock will be put into RendererVk's orphan list instead.
+    bool mOrphanNonEmptyBufferBlock;
 };
 
 class DisplayVk : public DisplayImpl, public vk::Context
@@ -84,7 +110,9 @@ class DisplayVk : public DisplayImpl, public vk::Context
 
     std::string getRendererDescription() override;
     std::string getVendorString() override;
-    std::string getVersionString() override;
+    std::string getVersionString(bool includeFullVersion) override;
+
+    DeviceImpl *createDevice() override;
 
     egl::Error waitClient(const gl::Context *context) override;
     egl::Error waitNative(const gl::Context *context, EGLint engine) override;
@@ -121,6 +149,14 @@ class DisplayVk : public DisplayImpl, public vk::Context
     gl::Version getMaxSupportedESVersion() const override;
     gl::Version getMaxConformantESVersion() const override;
 
+    egl::Error validateImageClientBuffer(const gl::Context *context,
+                                         EGLenum target,
+                                         EGLClientBuffer clientBuffer,
+                                         const egl::AttributeMap &attribs) const override;
+    ExternalImageSiblingImpl *createExternalImageSibling(const gl::Context *context,
+                                                         EGLenum target,
+                                                         EGLClientBuffer buffer,
+                                                         const egl::AttributeMap &attribs) override;
     virtual const char *getWSIExtension() const = 0;
     virtual const char *getWSILayer() const;
     virtual bool isUsingSwapchain() const;

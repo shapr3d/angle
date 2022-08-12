@@ -162,7 +162,8 @@ class TextureGL : public TextureImpl
                                            gl::MemoryObject *memoryObject,
                                            GLuint64 offset,
                                            GLbitfield createFlags,
-                                           GLbitfield usageFlags) override;
+                                           GLbitfield usageFlags,
+                                           const void *imageCreateInfoPNext) override;
 
     angle::Result setImageExternal(const gl::Context *context,
                                    const gl::ImageIndex &index,
@@ -200,6 +201,7 @@ class TextureGL : public TextureImpl
     angle::Result setMaxLevel(const gl::Context *context, GLuint maxLevel);
 
     angle::Result initializeContents(const gl::Context *context,
+                                     GLenum binding,
                                      const gl::ImageIndex &imageIndex) override;
 
     GLint getRequiredExternalTextureImageUnits(const gl::Context *context) override;

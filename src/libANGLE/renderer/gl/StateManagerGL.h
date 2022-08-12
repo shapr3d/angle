@@ -14,7 +14,7 @@
 #include "libANGLE/State.h"
 #include "libANGLE/angletypes.h"
 #include "libANGLE/renderer/gl/functionsgl_typedefs.h"
-#include "platform/FeaturesGL.h"
+#include "platform/FeaturesGL_autogen.h"
 
 #include <array>
 #include <map>
@@ -304,9 +304,9 @@ class StateManagerGL final : angle::NonCopyable
   private:
     void setTextureCubemapSeamlessEnabled(bool enabled);
 
-    void propagateProgramToVAO(const gl::Context *context,
-                               const gl::Program *program,
-                               VertexArrayGL *vao);
+    angle::Result propagateProgramToVAO(const gl::Context *context,
+                                        const gl::Program *program,
+                                        VertexArrayGL *vao);
 
     void updateProgramTextureBindings(const gl::Context *context);
     void updateProgramStorageBufferBindings(const gl::Context *context);
@@ -457,7 +457,7 @@ class StateManagerGL final : angle::NonCopyable
     float mSampleCoverageValue;
     bool mSampleCoverageInvert;
     bool mSampleMaskEnabled;
-    std::array<GLbitfield, gl::MAX_SAMPLE_MASK_WORDS> mSampleMaskValues;
+    gl::SampleMaskArray<GLbitfield> mSampleMaskValues;
 
     bool mDepthTestEnabled;
     GLenum mDepthFunc;

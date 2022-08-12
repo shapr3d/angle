@@ -8,7 +8,7 @@ You can also build your own dashboards. For example, a comparison of ANGLE's bac
 
 You can follow the usual instructions to [check out and build ANGLE](../../../doc/DevSetup.md). Build the `angle_perftests` target. Note that all test scores are higher-is-better. You should also ensure `is_debug=false` in your build. Running with `angle_assert_always_on` or debug validation enabled is not recommended.
 
-Variance can be a problem when benchmarking. We have a test harness to run a single test in an infinite loop and print some statistics to help mitigate variance. See [`scripts/perf_test_runner.py`](https://chromium.googlesource.com/angle/angle/+/master/scripts/perf_test_runner.py). To use the script first compile `angle_perftests` into a folder with the word `Release` in it. Then provide the name of the test as the argument to the script. The script will automatically pick up the most current `angle_perftests` and run in an infinite loop.
+Variance can be a problem when benchmarking. We have a test harness to run a single test in an infinite loop and print some statistics to help mitigate variance. See [`scripts/perf_test_runner.py`](https://chromium.googlesource.com/angle/angle/+/main/scripts/perf_test_runner.py). To use the script first compile `angle_perftests` into a folder with the word `Release` in it. Then provide the name of the test as the argument to the script. The script will automatically pick up the most current `angle_perftests` and run in an infinite loop.
 
 ### Choosing the Test to Run
 
@@ -33,6 +33,7 @@ Several command-line arguments control how the tests run:
 * `--render-test-output-dir=dir`: Equivalent to `--screenshot-dir dir`.
 * `--verbose`: Print extra timing information.
 * `--warmup-loops x`: Number of times to warm up the test before starting timing. Defaults to 3.
+* `--warmup-steps x`: Maximum number of steps for the warmup loops. Defaults to unlimited.
 * `--no-warmup`: Skip warming up the tests. Equivalent to `--warmup-steps 0`.
 * `--calibration-time`: Run each test calibration step in a fixed time. Defaults to 1 second.
 * `--max-trial-time x`: Run each test trial under this max time. Defaults to 10 seconds.
@@ -41,6 +42,8 @@ Several command-line arguments control how the tests run:
 * `--no-finish`: Don't call glFinish after each test trial.
 * `--enable-all-trace-tests`: Offscreen and vsync-limited trace tests are disabled by default to reduce test time.
 * `--minimize-gpu-work`: Modify API calls so that GPU work is reduced to minimum.
+* `--validation`: Enable serialization validation in the trace tests. Normally used with SwiftShader and retracing.
+* `--perf-counters`: Additional performance counters to include in the result output. Separate multiple entries with colons: ':'.
 
 For example, for an endless run with no warmup, run:
 
@@ -73,3 +76,17 @@ The command line arguments implementations are located in [`ANGLEPerfTestArgs.cp
 * [`TracePerfTest`](TracePerfTest.cpp): Runs replays of restricted traces, not available publicly. To enable, read more in [`RestrictedTraceTests`](../restricted_traces/README.md)
 
 Many other tests can be found that have documentation in their classes.
+
+## Understanding the Metrics
+
+* `cpu_time`: Amount of CPU time consumed by an iteration of the test. This is backed by
+`GetProcessTimes` on Windows, `getrusage` on Linux/Android, and `zx_object_get_info` on Fuchsia.
+  * This value may sometimes be larger than `wall_time`. That is because we are summing up the time
+on all CPU threads for the test.
+* `wall_time`: Wall time taken to run a single iteration, calculated by dividing the total wall
+clock time by the number of test iterations.
+  * For trace tests, each rendered frame is an iteration.
+* `gpu_time`: Estimated GPU elapsed time per test iteration. We compute the estimate using GLES
+[timestamp queries](https://www.khronos.org/registry/OpenGL/extensions/EXT/EXT_disjoint_timer_query.txt)
+at the beginning and ending of each test loop.
+  * For trace tests, this metric is only enabled in `vsync` mode.

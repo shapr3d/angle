@@ -22,6 +22,16 @@ ResourceTracker::ResourceTracker() {}
 ResourceTracker::~ResourceTracker() {}
 TrackedResource::TrackedResource() {}
 TrackedResource::~TrackedResource() {}
+StateResetHelper::StateResetHelper() {}
+StateResetHelper::~StateResetHelper() {}
+DataTracker::DataTracker() {}
+DataTracker::~DataTracker() {}
+DataCounters::DataCounters() {}
+DataCounters::~DataCounters() {}
+StringCounters::StringCounters() {}
+StringCounters::~StringCounters() {}
+ReplayWriter::ReplayWriter() {}
+ReplayWriter::~ReplayWriter() {}
 
 FrameCapture::FrameCapture() {}
 FrameCapture::~FrameCapture() {}
@@ -33,4 +43,13 @@ void FrameCaptureShared::onMakeCurrent(const gl::Context *context, const egl::Su
 {}
 void FrameCaptureShared::onDestroyContext(const gl::Context *context) {}
 void FrameCaptureShared::replay(gl::Context *context) {}
+const ProgramSources &FrameCaptureShared::getProgramSources(gl::ShaderProgramID id) const
+{
+    const auto &foundSources = mCachedProgramSources.find(id);
+    return foundSources->second;
+}
+void FrameCaptureShared::setProgramSources(gl::ShaderProgramID id, ProgramSources sources) {}
+
+CoherentBufferTracker::CoherentBufferTracker() {}
+CoherentBufferTracker::~CoherentBufferTracker() {}
 }  // namespace angle

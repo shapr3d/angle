@@ -23,6 +23,7 @@ extern const char *gScreenShotDir;
 extern int gScreenShotFrame;
 extern bool gVerboseLogging;
 extern int gWarmupLoops;
+extern int gWarmupSteps;
 extern double gCalibrationTimeSeconds;
 extern double gMaxTrialTimeSeconds;
 extern int gTestTrials;
@@ -30,6 +31,8 @@ extern bool gNoFinish;
 extern bool gEnableAllTraceTests;
 extern bool gRetraceMode;
 extern bool gMinimizeGPUWork;
+extern bool gTraceTestValidation;
+extern const char *gPerfCounters;
 
 inline bool OneFrame()
 {

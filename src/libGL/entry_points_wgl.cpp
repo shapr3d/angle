@@ -7,7 +7,6 @@
 
 #include "entry_points_wgl.h"
 
-#include "common/angle_version.h"
 #include "common/debug.h"
 #include "common/event_tracer.h"
 #include "common/utilities.h"
@@ -133,7 +132,8 @@ HGLRC GL_APIENTRY wglCreateContext(HDC hDc)
 
     const auto &attribMapDisplay = AttributeMap::CreateFromAttribArray(displayAttributes.data());
 
-    egl::Display *display = egl::Display::GetDisplayFromNativeDisplay(hDc, attribMapDisplay);
+    egl::Display *display =
+        egl::Display::GetDisplayFromNativeDisplay(EGL_PLATFORM_ANGLE_ANGLE, hDc, attribMapDisplay);
 
     ANGLE_EGL_TRY_RETURN(thread, display->initialize(), "wglCreateContext", display, nullptr);
 

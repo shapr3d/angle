@@ -843,6 +843,12 @@ angle::Result Buffer11::markRawBufferUsage(const gl::Context *context)
     return angle::Result::Continue;
 }
 
+angle::Result Buffer11::markTypedBufferUsage(const gl::Context *context)
+{
+    ANGLE_TRY(markBufferUsage(context, BUFFER_USAGE_TYPED_UAV));
+    return angle::Result::Continue;
+}
+
 angle::Result Buffer11::getRawUAVRange(const gl::Context *context,
                                        GLintptr offset,
                                        GLsizeiptr size,
@@ -1336,7 +1342,7 @@ angle::Result Buffer11::NativeStorage::resize(const gl::Context *context,
     d3d11::Buffer newBuffer;
     ANGLE_TRY(
         mRenderer->allocateResource(SafeGetImplAs<Context11>(context), bufferDesc, &newBuffer));
-    newBuffer.setDebugName("Buffer11::NativeStorage");
+    newBuffer.setInternalName("Buffer11::NativeStorage");
 
     if (mBuffer.valid() && preserveData)
     {
@@ -1449,6 +1455,12 @@ void Buffer11::NativeStorage::FillBufferDesc(D3D11_BUFFER_DESC *bufferDesc,
             bufferDesc->BindFlags      = D3D11_BIND_UNORDERED_ACCESS;
             bufferDesc->Usage          = D3D11_USAGE_DEFAULT;
             bufferDesc->CPUAccessFlags = 0;
+            break;
+        case BUFFER_USAGE_TYPED_UAV:
+            bufferDesc->BindFlags      = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+            bufferDesc->Usage          = D3D11_USAGE_DEFAULT;
+            bufferDesc->CPUAccessFlags = 0;
+            bufferDesc->MiscFlags      = 0;
             break;
 
         default:
@@ -1582,7 +1594,7 @@ angle::Result Buffer11::StructuredBufferStorage::resizeStructuredBuffer(
     d3d11::Buffer newBuffer;
     ANGLE_TRY(
         mRenderer->allocateResource(SafeGetImplAs<Context11>(context), bufferDesc, &newBuffer));
-    newBuffer.setDebugName("Buffer11::StructuredBufferStorage");
+    newBuffer.setInternalName("Buffer11::StructuredBufferStorage");
 
     // No longer need the old buffer
     mBuffer = std::move(newBuffer);
@@ -1736,7 +1748,7 @@ angle::Result Buffer11::EmulatedIndexedStorage::getBuffer(const gl::Context *con
 
         ANGLE_TRY(mRenderer->allocateResource(GetImplAs<Context11>(context), bufferDesc,
                                               &subResourceData, &mBuffer));
-        mBuffer.setDebugName("Buffer11::EmulatedIndexedStorage");
+        mBuffer.setInternalName("Buffer11::EmulatedIndexedStorage");
     }
 
     *bufferOut = &mBuffer;

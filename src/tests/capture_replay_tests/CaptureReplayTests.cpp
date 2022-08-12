@@ -9,6 +9,7 @@
 
 #include "common/debug.h"
 #include "common/system_utils.h"
+#include "traces_export.h"
 #include "util/EGLPlatformParameters.h"
 #include "util/EGLWindow.h"
 #include "util/OSWindow.h"
@@ -24,13 +25,75 @@
 #include <string>
 #include <utility>
 
-#include "util/frame_capture_test_utils.h"
+#include "frame_capture_test_utils.h"
 
-// Build the right context header based on replay ID
-// This will expand to "angle_capture_context<#>.h"
-#include ANGLE_MACRO_STRINGIZE(ANGLE_CAPTURE_REPLAY_COMPOSITE_TESTS_HEADER)
-
+namespace
+{
+EGLWindow *gEGLWindow       = nullptr;
 constexpr char kResultTag[] = "*RESULT";
+constexpr char kTracePath[] = ANGLE_CAPTURE_REPLAY_TEST_NAMES_PATH;
+
+EGLImage KHRONOS_APIENTRY EGLCreateImage(EGLDisplay display,
+                                         EGLContext context,
+                                         EGLenum target,
+                                         EGLClientBuffer buffer,
+                                         const EGLAttrib *attrib_list)
+{
+
+    GLWindowContext ctx = reinterpret_cast<GLWindowContext>(context);
+    return gEGLWindow->createImage(ctx, target, buffer, attrib_list);
+}
+
+EGLImage KHRONOS_APIENTRY EGLCreateImageKHR(EGLDisplay display,
+                                            EGLContext context,
+                                            EGLenum target,
+                                            EGLClientBuffer buffer,
+                                            const EGLint *attrib_list)
+{
+
+    GLWindowContext ctx = reinterpret_cast<GLWindowContext>(context);
+    return gEGLWindow->createImageKHR(ctx, target, buffer, attrib_list);
+}
+
+EGLBoolean KHRONOS_APIENTRY EGLDestroyImage(EGLDisplay display, EGLImage image)
+{
+    return gEGLWindow->destroyImage(image);
+}
+
+EGLBoolean KHRONOS_APIENTRY EGLDestroyImageKHR(EGLDisplay display, EGLImage image)
+{
+    return gEGLWindow->destroyImageKHR(image);
+}
+}  // namespace
+
+angle::GenericProc KHRONOS_APIENTRY TraceLoadProc(const char *procName)
+{
+    if (!gEGLWindow)
+    {
+        std::cout << "No Window pointer in TraceLoadProc.\n";
+        return nullptr;
+    }
+    else
+    {
+        if (strcmp(procName, "eglCreateImage") == 0)
+        {
+            return reinterpret_cast<angle::GenericProc>(EGLCreateImage);
+        }
+        if (strcmp(procName, "eglCreateImageKHR") == 0)
+        {
+            return reinterpret_cast<angle::GenericProc>(EGLCreateImageKHR);
+        }
+        if (strcmp(procName, "eglDestroyImage") == 0)
+        {
+            return reinterpret_cast<angle::GenericProc>(EGLDestroyImage);
+        }
+        if (strcmp(procName, "eglDestroyImageKHR") == 0)
+        {
+            return reinterpret_cast<angle::GenericProc>(EGLDestroyImageKHR);
+        }
+        return gEGLWindow->getProcAddress(procName);
+    }
+}
 
 class CaptureReplayTests
 {
@@ -51,10 +114,10 @@ class CaptureReplayTests
         OSWindow::Delete(&mOSWindow);
     }
 
-    bool initializeTest(uint32_t testIndex, const TestTraceInfo &testTraceInfo)
+    bool initializeTest(const std::string &execDir, const angle::TraceInfo &traceInfo)
     {
-        if (!mOSWindow->initialize(testTraceInfo.testName, testTraceInfo.replayDrawSurfaceWidth,
-                                   testTraceInfo.replayDrawSurfaceHeight))
+        if (!mOSWindow->initialize(traceInfo.name, traceInfo.drawSurfaceWidth,
+                                   traceInfo.drawSurfaceHeight))
         {
             return false;
         }
@@ -62,8 +125,8 @@ class CaptureReplayTests
         mOSWindow->disableErrorMessageDialog();
         mOSWindow->setVisible(true);
 
-        if (mEGLWindow && !mEGLWindow->isContextVersion(testTraceInfo.replayContextMajorVersion,
-                                                        testTraceInfo.replayContextMinorVersion))
+        if (mEGLWindow && !mEGLWindow->isContextVersion(traceInfo.contextClientMajorVersion,
+                                                        traceInfo.contextClientMinorVersion))
         {
             EGLWindow::Delete(&mEGLWindow);
             mEGLWindow = nullptr;
@@ -71,25 +134,26 @@ class CaptureReplayTests
 
         if (!mEGLWindow)
         {
-            mEGLWindow = EGLWindow::New(testTraceInfo.replayContextMajorVersion,
-                                        testTraceInfo.replayContextMinorVersion);
+            mEGLWindow = EGLWindow::New(traceInfo.contextClientMajorVersion,
+                                        traceInfo.contextClientMinorVersion);
         }
 
         ConfigParameters configParams;
-        configParams.redBits     = testTraceInfo.defaultFramebufferRedBits;
-        configParams.greenBits   = testTraceInfo.defaultFramebufferGreenBits;
-        configParams.blueBits    = testTraceInfo.defaultFramebufferBlueBits;
-        configParams.alphaBits   = testTraceInfo.defaultFramebufferAlphaBits;
-        configParams.depthBits   = testTraceInfo.defaultFramebufferDepthBits;
-        configParams.stencilBits = testTraceInfo.defaultFramebufferStencilBits;
+        configParams.redBits     = traceInfo.configRedBits;
+        configParams.greenBits   = traceInfo.configGreenBits;
+        configParams.blueBits    = traceInfo.configBlueBits;
+        configParams.alphaBits   = traceInfo.configAlphaBits;
+        configParams.depthBits   = traceInfo.configDepthBits;
+        configParams.stencilBits = traceInfo.configStencilBits;
 
-        configParams.clientArraysEnabled   = testTraceInfo.areClientArraysEnabled;
-        configParams.bindGeneratesResource = testTraceInfo.bindGeneratesResources;
-        configParams.webGLCompatibility    = testTraceInfo.webGLCompatibility;
-        configParams.robustResourceInit    = testTraceInfo.robustResourceInit;
+        configParams.clientArraysEnabled   = traceInfo.areClientArraysEnabled;
+        configParams.bindGeneratesResource = traceInfo.isBindGeneratesResourcesEnabled;
+        configParams.webGLCompatibility    = traceInfo.isWebGLCompatibilityEnabled;
+        configParams.robustResourceInit    = traceInfo.isRobustResourceInitEnabled;
 
-        mPlatformParams.renderer   = testTraceInfo.replayPlatformType;
-        mPlatformParams.deviceType = testTraceInfo.replayDeviceType;
+        mPlatformParams.renderer   = traceInfo.displayPlatformType;
+        mPlatformParams.deviceType = traceInfo.displayDeviceType;
+        mPlatformParams.enable(angle::Feature::ForceInitShaderVariables);
 
         if (!mEGLWindow->initializeGL(mOSWindow, mEntryPointsLib.get(),
                                       angle::GLESDriverType::AngleEGL, mPlatformParams,
@@ -98,6 +162,11 @@ class CaptureReplayTests
             mOSWindow->destroy();
             return false;
         }
+
+        gEGLWindow = mEGLWindow;
+        trace_angle::LoadEGL(TraceLoadProc);
+        trace_angle::LoadGLES(TraceLoadProc);
+
         // Disable vsync
         if (!mEGLWindow->setSwapInterval(0))
         {
@@ -105,23 +174,24 @@ class CaptureReplayTests
             return false;
         }
 
-        mStartingDirectory = angle::GetCWD().value();
-
         // Load trace
-        mTraceLibrary.reset(new angle::TraceLibrary(testTraceInfo.testName.c_str()));
-
-        // Set CWD to executable directory.
-        std::string exeDir = angle::GetExecutableDirectory();
-        if (!angle::SetCWD(exeDir.c_str()))
+        mTraceLibrary.reset(new angle::TraceLibrary(traceInfo.name));
+        if (!mTraceLibrary->valid())
         {
-            cleanupTest();
+            std::cout << "Failed to load trace library: " << traceInfo.name << "\n";
             return false;
         }
-        if (testTraceInfo.isBinaryDataCompressed)
+
+        if (traceInfo.isBinaryDataCompressed)
         {
             mTraceLibrary->setBinaryDataDecompressCallback(angle::DecompressBinaryData);
         }
-        mTraceLibrary->setBinaryDataDir(ANGLE_CAPTURE_REPLAY_TEST_DATA_DIR);
+
+        std::stringstream binaryPathStream;
+        binaryPathStream << execDir << angle::GetPathSeparator()
+                         << ANGLE_CAPTURE_REPLAY_TEST_DATA_DIR;
+
+        mTraceLibrary->setBinaryDataDir(binaryPathStream.str().c_str());
 
         mTraceLibrary->setupReplay();
         return true;
@@ -129,7 +199,6 @@ class CaptureReplayTests
 
     void cleanupTest()
     {
-        angle::SetCWD(mStartingDirectory.c_str());
         mTraceLibrary.reset(nullptr);
         mEGLWindow->destroyGL();
         mOSWindow->destroy();
@@ -137,21 +206,20 @@ class CaptureReplayTests
 
     void swap() { mEGLWindow->swap(); }
 
-    int runTest(uint32_t testIndex, const TestTraceInfo &testTraceInfo)
+    int runTest(const std::string &exeDir, const angle::TraceInfo &traceInfo)
     {
-        if (!initializeTest(testIndex, testTraceInfo))
+        if (!initializeTest(exeDir, traceInfo))
         {
             return -1;
         }
 
-        for (uint32_t frame = testTraceInfo.replayFrameStart; frame <= testTraceInfo.replayFrameEnd;
-             frame++)
+        for (uint32_t frame = traceInfo.frameStart; frame <= traceInfo.frameEnd; frame++)
         {
             mTraceLibrary->replayFrame(frame);
 
-            const char *capturedSerializedState =
+            const char *replayedSerializedState =
                 reinterpret_cast<const char *>(glGetString(GL_SERIALIZED_CONTEXT_STRING_ANGLE));
-            const char *replayedSerializedState = mTraceLibrary->getSerializedContextState(frame);
+            const char *capturedSerializedState = mTraceLibrary->getSerializedContextState(frame);
 
             bool isEqual =
                 (capturedSerializedState && replayedSerializedState)
@@ -163,12 +231,15 @@ class CaptureReplayTests
             if (!isEqual)
             {
                 std::ostringstream replayName;
-                replayName << testTraceInfo.testName << "_ContextReplayed" << frame << ".json";
+                replayName << exeDir << angle::GetPathSeparator() << traceInfo.name
+                           << "_ContextReplayed" << frame << ".json";
+
                 std::ofstream debugReplay(replayName.str());
                 debugReplay << (replayedSerializedState ? replayedSerializedState : "") << "\n";
 
                 std::ostringstream captureName;
-                captureName << testTraceInfo.testName << "_ContextCaptured" << frame << ".json";
+                captureName << exeDir << angle::GetPathSeparator() << traceInfo.name
+                            << "_ContextCaptured" << frame << ".json";
                 std::ofstream debugCapture(captureName.str());
 
                 debugCapture << (capturedSerializedState ? capturedSerializedState : "") << "\n";
@@ -183,11 +254,44 @@ class CaptureReplayTests
 
     int run()
     {
-        for (size_t i = 0; i < testTraceInfos.size(); i++)
+        std::string startingDirectory = angle::GetCWD().value();
+
+        // Set CWD to executable directory.
+        std::string exeDir = angle::GetExecutableDirectory();
+
+        std::vector<std::string> traces;
+
+        std::stringstream tracePathStream;
+        tracePathStream << exeDir << angle::GetPathSeparator() << kTracePath;
+
+        if (!angle::LoadTraceNamesFromJSON(tracePathStream.str(), &traces))
         {
-            int result = runTest(static_cast<uint32_t>(i), testTraceInfos[i]);
-            std::cout << kResultTag << " " << testTraceInfos[i].testName << " " << result << "\n";
+            std::cout << "Unable to load trace names from " << kTracePath << "\n";
+            return 1;
         }
+
+        for (const std::string &trace : traces)
+        {
+            std::stringstream traceJsonPathStream;
+            traceJsonPathStream << exeDir << angle::GetPathSeparator()
+                                << ANGLE_CAPTURE_REPLAY_TEST_DATA_DIR << angle::GetPathSeparator()
+                                << trace << ".json";
+            std::string traceJsonPath = traceJsonPathStream.str();
+
+            int result                 = -1;
+            angle::TraceInfo traceInfo = {};
+            if (!angle::LoadTraceInfoFromJSON(trace, traceJsonPath, &traceInfo))
+            {
+                std::cout << "Unable to load trace data: " << traceJsonPath << "\n";
+            }
+            else
+            {
+                result = runTest(exeDir, traceInfo);
+            }
+            std::cout << kResultTag << " " << trace << " " << result << "\n";
+        }
+
+        angle::SetCWD(startingDirectory.c_str());
         return 0;
     }
 
@@ -199,7 +303,6 @@ class CaptureReplayTests
         return !strcmp(replaySerializedContextState, capturedSerializedContextState);
     }
 
-    std::string mStartingDirectory;
     OSWindow *mOSWindow   = nullptr;
     EGLWindow *mEGLWindow = nullptr;
     EGLPlatformParameters mPlatformParams;
