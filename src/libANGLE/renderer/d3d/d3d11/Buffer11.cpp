@@ -405,7 +405,8 @@ angle::Result Buffer11::setDataWithUsageFlags(const gl::Context *context,
         updateD3DBufferUsage(context, gl::BufferUsage::DynamicDraw);
 
         auto *contextD3D     = GetImplAs<ContextD3D>(context);
-        auto *clientBuffer11 = static_cast<ID3D11Buffer *>(clientBuffer);
+        d3d11::Buffer buffer(d3d11::DynamicCastComObject<ID3D11Buffer>(static_cast<IUnknown *>(clientBuffer)), nullptr);
+        auto* clientBuffer11 = buffer.get();
 
         D3D11_BUFFER_DESC clientBufferDesc11;
         clientBuffer11->GetDesc(&clientBufferDesc11);
@@ -461,7 +462,6 @@ angle::Result Buffer11::setDataWithUsageFlags(const gl::Context *context,
                 ANGLE_CHECK(contextD3D, false, "Unsupported target", GL_INVALID_OPERATION);
         }
 
-        d3d11::Buffer buffer(clientBuffer11, nullptr);
         BufferStorage *storage = new NativeStorage(mRenderer, bufferUsage, nullptr, &buffer, size);
         onStorageUpdate(storage);
         mBufferStorages[bufferUsage] = storage;
