@@ -406,7 +406,7 @@ angle::Result Buffer11::setDataWithUsageFlags(const gl::Context *context,
 
         auto *contextD3D     = GetImplAs<ContextD3D>(context);
         d3d11::Buffer buffer(d3d11::DynamicCastComObject<ID3D11Buffer>(static_cast<IUnknown *>(clientBuffer)), nullptr);
-        auto* clientBuffer11 = buffer.get();
+        auto *clientBuffer11 = buffer.get();
 
         D3D11_BUFFER_DESC clientBufferDesc11;
         clientBuffer11->GetDesc(&clientBufferDesc11);
