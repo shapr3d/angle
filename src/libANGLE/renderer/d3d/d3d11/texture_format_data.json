@@ -341,6 +341,18 @@
     },
     "glInternalFormat": "GL_DEPTH32F_STENCIL8"
   },
+  "R32G8X24_TYPELESS": {
+    "texFormat": "DXGI_FORMAT_R32G8X24_TYPELESS",
+    "srvFormat": "DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS",
+    "stencilSRVFormat": "DXGI_FORMAT_X32_TYPELESS_G8X24_UINT",
+    "dsvFormat": "DXGI_FORMAT_D32_FLOAT_S8X24_UINT",
+    "channels": "ds",
+    "bits": {
+      "depth": 32,
+      "stencil": 8
+    },
+    "glInternalFormat": "GL_DEPTH32F_STENCIL8"
+  },
   "D16_UNORM": {
     "FL10Plus": {
       "texFormat": "DXGI_FORMAT_R16_TYPELESS",

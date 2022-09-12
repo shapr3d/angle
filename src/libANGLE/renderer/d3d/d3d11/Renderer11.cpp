@@ -1554,6 +1554,8 @@ egl::Error Renderer11::getD3DTextureInfo(const egl::Config *configuration,
             case DXGI_FORMAT_R8G8_UNORM:
             case DXGI_FORMAT_R16_UNORM:
             case DXGI_FORMAT_R16G16_UNORM:
+            case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+            case DXGI_FORMAT_R32G8X24_TYPELESS:
                 break;
 
             default:
@@ -1580,6 +1582,7 @@ egl::Error Renderer11::getD3DTextureInfo(const egl::Config *configuration,
                 case GL_RGB10_A2_EXT:
                 case GL_R16_EXT:
                 case GL_RG16_EXT:
+                case GL_DEPTH32F_STENCIL8:
                     break;
                 default:
                     return egl::EglBadParameter()
