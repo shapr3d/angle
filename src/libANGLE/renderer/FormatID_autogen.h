@@ -196,6 +196,7 @@ enum class FormatID
     R32G32_UINT,
     R32G32_UNORM,
     R32G32_USCALED,
+    R32G8X24_TYPELESS,
     R32_FIXED,
     R32_FLOAT,
     R32_SINT,
@@ -247,7 +248,7 @@ enum class FormatID
     X2R10G10B10_USCALED_VERTEX
 };
 
-constexpr uint32_t kNumANGLEFormats = 228;
+constexpr uint32_t kNumANGLEFormats = 229;
 
 }  // namespace angle
 

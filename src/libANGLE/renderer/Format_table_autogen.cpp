@@ -18,7 +18,7 @@ namespace angle
 {
 
 static constexpr rx::FastCopyFunctionMap::Entry BGRAEntry  = {angle::FormatID::R8G8B8A8_UNORM,
-                                                             CopyBGRA8ToRGBA8};
+                                                              CopyBGRA8ToRGBA8};
 static constexpr rx::FastCopyFunctionMap BGRACopyFunctions = {&BGRAEntry, 1};
 static constexpr rx::FastCopyFunctionMap NoCopyFunctions;
 
@@ -203,6 +203,7 @@ const Format gFormatInfoTable[] = {
     { FormatID::R32G32_UINT, GL_RG32UI, GL_RG32UI, GenerateMip<R32G32>, NoCopyFunctions, ReadColor<R32G32, GLuint>, WriteColor<R32G32, GLuint>, GL_UNSIGNED_INT, 32, 32, 0, 0, 0, 0, 0, 8, 3, false, false, false, false, false, gl::VertexAttribType::UnsignedInt },
     { FormatID::R32G32_UNORM, GL_RG32_UNORM_ANGLEX, GL_RG32_UNORM_ANGLEX, GenerateMip<R32G32>, NoCopyFunctions, ReadColor<R32G32, GLfloat>, WriteColor<R32G32, GLfloat>, GL_UNSIGNED_NORMALIZED, 32, 32, 0, 0, 0, 0, 0, 8, 3, false, false, false, false, false, gl::VertexAttribType::UnsignedInt },
     { FormatID::R32G32_USCALED, GL_RG32_USCALED_ANGLEX, GL_RG32_USCALED_ANGLEX, GenerateMip<R32G32>, NoCopyFunctions, ReadColor<R32G32, GLuint>, WriteColor<R32G32, GLuint>, GL_UNSIGNED_INT, 32, 32, 0, 0, 0, 0, 0, 8, 3, false, false, true, false, false, gl::VertexAttribType::UnsignedInt },
+    { FormatID::R32G8X24_TYPELESS, GL_R32_G8_X24_TYPELESS_ANGLEX, GL_R32_G8_X24_TYPELESS_ANGLEX, GenerateMip<R32G8X24>, NoCopyFunctions, ReadColor<R32G8X24, GLfloat>, WriteColor<R32G8X24, GLfloat>, GL_UNSIGNED_NORMALIZED, 32, 8, 0, 0, 0, 0, 0, 8, std::numeric_limits<GLuint>::max(), false, false, false, false, false, gl::VertexAttribType::UnsignedInt },
     { FormatID::R32_FIXED, GL_R32_FIXED_ANGLEX, GL_R32_FIXED_ANGLEX, GenerateMip<R32F>, NoCopyFunctions, ReadColor<R32F, GLfloat>, WriteColor<R32F, GLfloat>, GL_FLOAT, 32, 0, 0, 0, 0, 0, 0, 4, 3, false, true, false, false, false, gl::VertexAttribType::Fixed },
     { FormatID::R32_FLOAT, GL_R32F, GL_R32F, GenerateMip<R32F>, NoCopyFunctions, ReadColor<R32F, GLfloat>, WriteColor<R32F, GLfloat>, GL_FLOAT, 32, 0, 0, 0, 0, 0, 0, 4, 3, false, false, false, false, false, gl::VertexAttribType::Float },
     { FormatID::R32_SINT, GL_R32I, GL_R32I, GenerateMip<R32S>, NoCopyFunctions, ReadColor<R32S, GLint>, WriteColor<R32S, GLint>, GL_INT, 32, 0, 0, 0, 0, 0, 0, 4, 3, false, false, false, false, false, gl::VertexAttribType::Int },
@@ -518,6 +519,8 @@ FormatID Format::InternalFormatToID(GLenum internalFormat)
             return FormatID::R32_UINT;
         case GL_R32_FIXED_ANGLEX:
             return FormatID::R32_FIXED;
+        case GL_R32_G8_X24_TYPELESS_ANGLEX:
+            return FormatID::R32G8X24_TYPELESS;
         case GL_R32_SNORM_ANGLEX:
             return FormatID::R32_SNORM;
         case GL_R32_SSCALED_ANGLEX:

@@ -14,7 +14,7 @@ static char gDefaultMetallibSrc[] = R"(
 # 1 "temp_master_source.metal"
 # 1 "<built-in>" 1
 # 1 "<built-in>" 3
-# 451 "<built-in>" 3
+# 384 "<built-in>" 3
 # 1 "<command line>" 1
 # 1 "<built-in>" 2
 # 1 "temp_master_source.metal" 2
@@ -1672,6 +1672,7 @@ enum
     R32G32_UINT,
     R32G32_UNORM,
     R32G32_USCALED,
+    R32G8X24_TYPELESS,
     R32_FIXED,
     R32_FLOAT,
     R32_SINT,

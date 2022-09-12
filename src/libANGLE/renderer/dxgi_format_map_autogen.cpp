@@ -440,7 +440,7 @@ const Format &GetFormat(DXGI_FORMAT dxgiFormat)
         case DXGI_FORMAT_R32G32_UINT:
             return Format::Get(FormatID::R32G32_UINT);
         case DXGI_FORMAT_R32G8X24_TYPELESS:
-            break;
+            return Format::Get(FormatID::R32G8X24_TYPELESS);
         case DXGI_FORMAT_R32_FLOAT:
             return Format::Get(FormatID::R32_FLOAT);
         case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:

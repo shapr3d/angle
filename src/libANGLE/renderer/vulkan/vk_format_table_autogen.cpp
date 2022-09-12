@@ -1808,6 +1808,10 @@ void Format::initialize(RendererVk *renderer, const angle::Format &angleFormat)
             mVertexLoadRequiresConversion = true;
             break;
 
+        case angle::FormatID::R32G8X24_TYPELESS:
+            // This format is not implemented in Vulkan.
+            break;
+
         case angle::FormatID::R32_FIXED:
             mIntendedGLFormat = GL_R32_FIXED_ANGLEX;
 
