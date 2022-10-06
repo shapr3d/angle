@@ -49,7 +49,7 @@ egl::Error ExternalImageSiblingImpl11::initialize(const egl::Display *display)
     mIsRenderable = (textureDesc.BindFlags & D3D11_BIND_RENDER_TARGET) &&
                     (resourceUsage & DXGI_USAGE_RENDER_TARGET_OUTPUT) &&
                     !(resourceUsage & DXGI_USAGE_READ_ONLY);
-
+    mIsDepthAttachment = (textureDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL);
     mIsTexturable = (textureDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) &&
                     (resourceUsage & DXGI_USAGE_SHADER_INPUT);
 
@@ -68,7 +68,7 @@ gl::Format ExternalImageSiblingImpl11::getFormat() const
 
 bool ExternalImageSiblingImpl11::isRenderable(const gl::Context *context) const
 {
-    return mIsRenderable;
+    return mIsRenderable || mIsDepthAttachment;
 }
 
 bool ExternalImageSiblingImpl11::isTexturable(const gl::Context *context) const
@@ -124,44 +124,6 @@ angle::Result ExternalImageSiblingImpl11::createRenderTarget(const gl::Context *
     Context11 *context11            = GetImplAs<Context11>(context);
     const d3d11::Format &formatInfo = mTexture.getFormatSet();
 
-    d3d11::RenderTargetView rtv;
-    if (mIsRenderable)
-    {
-        D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
-        rtvDesc.Format = formatInfo.rtvFormat;
-        if (mIsTextureArray)
-        {
-            if (mSamples == 0)
-            {
-                rtvDesc.ViewDimension                  = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
-                rtvDesc.Texture2DArray.MipSlice        = 0;
-                rtvDesc.Texture2DArray.FirstArraySlice = mArraySlice;
-                rtvDesc.Texture2DArray.ArraySize       = 1;
-            }
-            else
-            {
-                rtvDesc.ViewDimension                    = D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY;
-                rtvDesc.Texture2DMSArray.FirstArraySlice = mArraySlice;
-                rtvDesc.Texture2DMSArray.ArraySize       = 1;
-            }
-        }
-        else
-        {
-            if (mSamples == 0)
-            {
-                rtvDesc.ViewDimension      = D3D11_RTV_DIMENSION_TEXTURE2D;
-                rtvDesc.Texture2D.MipSlice = 0;
-            }
-            else
-            {
-                rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
-            }
-        }
-
-        ANGLE_TRY(mRenderer->allocateResource(context11, rtvDesc, mTexture.get(), &rtv));
-        rtv.setInternalName("getAttachmentRenderTarget.RTV");
-    }
-
     d3d11::SharedSRV srv;
     if (mIsTexturable)
     {
@@ -203,9 +165,92 @@ angle::Result ExternalImageSiblingImpl11::createRenderTarget(const gl::Context *
     }
     d3d11::SharedSRV blitSrv = srv.makeCopy();
 
-    mRenderTarget = std::make_unique<TextureRenderTarget11>(
-        std::move(rtv), mTexture, std::move(srv), std::move(blitSrv), mFormat.info->internalFormat,
-        formatInfo, mWidth, mHeight, 1, mSamples);
+    if (mIsRenderable)
+    {
+        d3d11::RenderTargetView rtv;
+    
+        D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+        rtvDesc.Format = formatInfo.rtvFormat;
+        if (mIsTextureArray)
+        {
+            if (mSamples == 0)
+            {
+                rtvDesc.ViewDimension                  = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+                rtvDesc.Texture2DArray.MipSlice        = 0;
+                rtvDesc.Texture2DArray.FirstArraySlice = mArraySlice;
+                rtvDesc.Texture2DArray.ArraySize       = 1;
+            }
+            else
+            {
+                rtvDesc.ViewDimension                    = D3D11_RTV_DIMENSION_TEXTURE2DMSARRAY;
+                rtvDesc.Texture2DMSArray.FirstArraySlice = mArraySlice;
+                rtvDesc.Texture2DMSArray.ArraySize       = 1;
+            }
+        }
+        else
+        {
+            if (mSamples == 0)
+            {
+                rtvDesc.ViewDimension      = D3D11_RTV_DIMENSION_TEXTURE2D;
+                rtvDesc.Texture2D.MipSlice = 0;
+            }
+            else
+            {
+                rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+            }
+        }
+
+        ANGLE_TRY(mRenderer->allocateResource(context11, rtvDesc, mTexture.get(), &rtv));
+        rtv.setInternalName("getAttachmentRenderTarget.RTV");
+        
+        mRenderTarget = std::make_unique<TextureRenderTarget11>(
+            std::move(rtv), mTexture, std::move(srv), std::move(blitSrv), mFormat.info->internalFormat,
+            formatInfo, mWidth, mHeight, 1, mSamples);
+    }
+    else if (mIsDepthAttachment) 
+    {
+        d3d11::DepthStencilView dsv;
+        
+        D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+        dsvDesc.Format = formatInfo.dsvFormat;
+        if (mIsTextureArray) 
+        {
+            if (mSamples == 0)
+            {
+                dsvDesc.ViewDimension                   = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+                dsvDesc.Texture2DArray.ArraySize        = 1;
+                dsvDesc.Texture2DArray.FirstArraySlice  = mArraySlice;
+                dsvDesc.Texture2DArray.MipSlice         = 0;
+            }
+            else
+            {
+                
+                dsvDesc.ViewDimension                   = D3D11_DSV_DIMENSION_TEXTURE2DMSARRAY;
+                dsvDesc.Texture2DMSArray.ArraySize        = 1;
+                dsvDesc.Texture2DMSArray.FirstArraySlice  = mArraySlice;
+            }
+        }
+        else
+        {
+            if (mSamples == 0)
+            {
+                dsvDesc.ViewDimension      = D3D11_DSV_DIMENSION_TEXTURE2D;
+                dsvDesc.Texture2D.MipSlice = 0;
+            }
+            else
+            {
+                dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+            }
+        }
+        
+        ANGLE_TRY(mRenderer->allocateResource(context11, dsvDesc, mTexture.get(), &dsv));
+        dsv.setInternalName("getAttachmentRenderTarget.DSV");
+        
+        mRenderTarget = std::make_unique<TextureRenderTarget11>(
+            std::move(dsv), mTexture, std::move(srv), mFormat.info->internalFormat,
+            formatInfo, mWidth, mHeight, 1, mSamples);
+    }
+    
     return angle::Result::Continue;
 }
 

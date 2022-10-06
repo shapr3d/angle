@@ -55,6 +55,7 @@ class ExternalImageSiblingImpl11 : public ExternalImageSiblingImpl
 
     gl::Format mFormat        = gl::Format::Invalid();
     bool mIsRenderable        = false;
+    bool mIsDepthAttachment   = false;
     bool mIsTexturable        = false;
     bool mIsTextureArray      = false;
     bool mYUV                 = false;
