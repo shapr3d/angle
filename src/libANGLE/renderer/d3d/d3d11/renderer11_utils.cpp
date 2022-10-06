@@ -1662,6 +1662,7 @@ void GenerateCaps(ID3D11Device *device,
     extensions->EGLImageExternalOES                 = true;
     extensions->EGLImageExternalWrapModesEXT        = true;
     extensions->EGLImageExternalEssl3OES            = true;
+    extensions->EGLImageStorageEXT                  = true;
     extensions->EGLStreamConsumerExternalNV         = true;
     extensions->unpackSubimageEXT                   = true;
     extensions->packSubimageNV                      = true;
