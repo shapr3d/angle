@@ -239,6 +239,8 @@ def get_component_alignment_mask(channels, bits):
 
 def get_vertex_attrib_type(format_id):
 
+    if "R32G8X24_TYPELESS" in format_id:
+        return "Float"
     has_u = "_U" in format_id
     has_s = "_S" in format_id
     has_float = "_FLOAT" in format_id
@@ -327,7 +329,7 @@ def json_to_table_data(format_id, json, angle_to_gl):
     if is_block:
         assert 'blockPixelBytes' in parsed, \
             'Compressed format %s requires its block size to be specified in angle_format_data.json' % \
-                format_id
+            format_id
         pixel_bytes = parsed['blockPixelBytes']
     else:
         sum_of_bits = 0
@@ -345,7 +347,8 @@ def json_to_table_data(format_id, json, angle_to_gl):
     # when adding support for YUV formats that have different identifying markers.
     parsed["isYUV"] = bool_str("PLANE" in format_id)
 
-    parsed["vertexAttribType"] = "gl::VertexAttribType::" + get_vertex_attrib_type(format_id)
+    parsed["vertexAttribType"] = "gl::VertexAttribType::" + \
+        get_vertex_attrib_type(format_id)
 
     return format_entry_template.format(**parsed)
 
