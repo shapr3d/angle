@@ -46,10 +46,10 @@ egl::Error ExternalImageSiblingImpl11::initialize(const egl::Display *display)
     resource->GetUsage(&resourceUsage);
     SafeRelease(resource);
 
-    mIsRenderable = (textureDesc.BindFlags & D3D11_BIND_RENDER_TARGET) &&
-                    (resourceUsage & DXGI_USAGE_RENDER_TARGET_OUTPUT) &&
-                    !(resourceUsage & DXGI_USAGE_READ_ONLY);
-    mIsDepthAttachment = (textureDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL);
+    mIsColorRenderable = (textureDesc.BindFlags & D3D11_BIND_RENDER_TARGET) &&
+                        (resourceUsage & DXGI_USAGE_RENDER_TARGET_OUTPUT) &&
+                        !(resourceUsage & DXGI_USAGE_READ_ONLY);
+    mIsDepthRenderable = (textureDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL);
     mIsTexturable = (textureDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) &&
                     (resourceUsage & DXGI_USAGE_SHADER_INPUT);
 
@@ -68,7 +68,7 @@ gl::Format ExternalImageSiblingImpl11::getFormat() const
 
 bool ExternalImageSiblingImpl11::isRenderable(const gl::Context *context) const
 {
-    return mIsRenderable || mIsDepthAttachment;
+    return mIsColorRenderable || mIsDepthRenderable;
 }
 
 bool ExternalImageSiblingImpl11::isTexturable(const gl::Context *context) const
@@ -163,9 +163,8 @@ angle::Result ExternalImageSiblingImpl11::createRenderTarget(const gl::Context *
         ANGLE_TRY(mRenderer->allocateResource(context11, srvDesc, mTexture.get(), &srv));
         srv.setInternalName("getAttachmentRenderTarget.SRV");
     }
-    d3d11::SharedSRV blitSrv = srv.makeCopy();
 
-    if (mIsRenderable)
+    if (mIsColorRenderable)
     {
         d3d11::RenderTargetView rtv;
     
@@ -203,11 +202,12 @@ angle::Result ExternalImageSiblingImpl11::createRenderTarget(const gl::Context *
         ANGLE_TRY(mRenderer->allocateResource(context11, rtvDesc, mTexture.get(), &rtv));
         rtv.setInternalName("getAttachmentRenderTarget.RTV");
         
+        d3d11::SharedSRV blitSrv = srv.makeCopy();
         mRenderTarget = std::make_unique<TextureRenderTarget11>(
             std::move(rtv), mTexture, std::move(srv), std::move(blitSrv), mFormat.info->internalFormat,
             formatInfo, mWidth, mHeight, 1, mSamples);
     }
-    else if (mIsDepthAttachment) 
+    else if (mIsDepthRenderable) 
     {
         d3d11::DepthStencilView dsv;
         
