@@ -3125,7 +3125,7 @@ angle::Result Renderer11::compileToExecutable(d3d::Context *context,
 
     UINT flags = D3DCOMPILE_OPTIMIZATION_LEVEL2;
 
-#if defined(ANGLE_ENABLE_DEBUG_TRACE)
+#if 1// defined(ANGLE_ENABLE_DEBUG_TRACE)
 #    ifndef NDEBUG
     flags = D3DCOMPILE_SKIP_OPTIMIZATION;
 #    endif  // NDEBUG
