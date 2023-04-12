@@ -2345,6 +2345,15 @@ HRESULT SetDebugName(ID3D11DeviceChild *resource,
                      const char *internalName,
                      const std::string *khrDebugName)
 {
+    UINT debugNameSize = 0;
+    HRESULT result = resource->GetPrivateData(WKPDID_D3DDebugObjectName, &debugNameSize, nullptr);
+
+    // If the resource already has a name, don't overwrite it.
+    if (debugNameSize > 0)
+    {
+        return result;
+    }
+
     // Prepend ANGLE to separate names from other components in the same process.
     std::string d3dName = "ANGLE";
     bool sendNameToD3D  = false;
