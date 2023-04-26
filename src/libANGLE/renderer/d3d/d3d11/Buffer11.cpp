@@ -402,7 +402,9 @@ angle::Result Buffer11::setDataWithUsageFlags(const gl::Context *context,
         // calling BufferStorage() (and as consequence BufferStorageExternal())
         // modifies the buffer object state such that BUFFER_USAGE is set to
         // DYNAMIC_DRAW.
-        updateD3DBufferUsage(context, gl::BufferUsage::DynamicDraw);
+        // Going against the spec, we choose STATIC_DRAW as a workaround aiming 
+        // to avoid staging and system memory copies.
+        updateD3DBufferUsage(context, gl::BufferUsage::StaticDraw);
 
         auto *contextD3D     = GetImplAs<ContextD3D>(context);
         d3d11::Buffer buffer(d3d11::DynamicCastComObject<ID3D11Buffer>(static_cast<IUnknown *>(clientBuffer)), nullptr);
