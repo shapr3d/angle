@@ -32,7 +32,7 @@ namespace gl
 class Context;
 
 // Pairs a begin event with an end event.
-class ANGLE_NO_DISCARD ScopedPerfEventHelper : angle::NonCopyable
+class [[nodiscard]] ScopedPerfEventHelper : angle::NonCopyable
 {
   public:
     ScopedPerfEventHelper(Context *context, angle::EntryPoint entryPoint);
@@ -96,22 +96,22 @@ class DebugAnnotator : angle::NonCopyable
     virtual void beginEvent(gl::Context *context,
                             angle::EntryPoint entryPoint,
                             const char *eventName,
-                            const char *eventMessage)   = 0;
+                            const char *eventMessage)                    = 0;
     virtual void endEvent(gl::Context *context,
                           const char *eventName,
-                          angle::EntryPoint entryPoint) = 0;
-    virtual void setMarker(const char *markerName)      = 0;
-    virtual bool getStatus()                            = 0;
+                          angle::EntryPoint entryPoint)                  = 0;
+    virtual void setMarker(gl::Context *context, const char *markerName) = 0;
+    virtual bool getStatus(const gl::Context *context)                   = 0;
     // Log Message Handler that gets passed every log message,
     // when debug annotations are initialized,
     // replacing default handling by LogMessage.
     virtual void logMessage(const LogMessage &msg) const = 0;
 };
 
-bool ShouldBeginScopedEvent();
+bool ShouldBeginScopedEvent(const gl::Context *context);
 void InitializeDebugAnnotations(DebugAnnotator *debugAnnotator);
 void UninitializeDebugAnnotations();
-bool DebugAnnotationsActive();
+bool DebugAnnotationsActive(const gl::Context *context);
 bool DebugAnnotationsInitialized();
 
 void InitializeDebugMutexIfNeeded();
@@ -273,7 +273,7 @@ std::ostream &FmtHex(std::ostream &os, T value)
                 context, angle::EntryPoint::entryPoint);                                     \
             do                                                                               \
             {                                                                                \
-                if (gl::ShouldBeginScopedEvent())                                            \
+                if (gl::ShouldBeginScopedEvent(context))                                     \
                 {                                                                            \
                     scopedPerfEventHelper##__LINE__.begin(                                   \
                         "%s(" message ")", GetEntryPointName(angle::EntryPoint::entryPoint), \
@@ -286,7 +286,7 @@ std::ostream &FmtHex(std::ostream &os, T value)
                                                             angle::EntryPoint::entryPoint);       \
             do                                                                                    \
             {                                                                                     \
-                if (gl::ShouldBeginScopedEvent())                                                 \
+                if (gl::ShouldBeginScopedEvent(context))                                          \
                 {                                                                                 \
                     scopedPerfEventHelper.begin("%s(" message ")",                                \
                                                 GetEntryPointName(angle::EntryPoint::entryPoint), \
@@ -308,13 +308,6 @@ std::ostream &FmtHex(std::ostream &os, T value)
 #else
 #    define ANGLE_CRASH() ((void)(*(volatile char *)0 = 0)), __assume(0)
 #endif
-
-#if !defined(NDEBUG)
-#    define ANGLE_ASSERT_IMPL(expression) assert(expression)
-#else
-// TODO(jmadill): Detect if debugger is attached and break.
-#    define ANGLE_ASSERT_IMPL(expression) ANGLE_CRASH()
-#endif  // !defined(NDEBUG)
 
 // Note that gSwallowStream is used instead of an arbitrary LOG() stream to avoid the creation of an
 // object with a non-trivial destructor (LogMessage). On MSVC x86 (checked on 2015 Update 3), this

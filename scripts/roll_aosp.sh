@@ -5,6 +5,9 @@
 #  found in the LICENSE file.
 #
 # Generates a roll CL within the ANGLE repository of AOSP.
+#
+# WARNING: Running this script without args may mess up the checkout.
+#   See --genAndroidBp for testing just the code generation.
 
 # exit when any command fails
 set -eE -o functrace
@@ -22,8 +25,6 @@ cd "${0%/*}/.."
 GN_OUTPUT_DIRECTORY=out/Android
 
 function generate_Android_bp_file() {
-    rm -rf ${GN_OUTPUT_DIRECTORY}
-
     abis=(
         "arm"
         "arm64"
@@ -41,6 +42,7 @@ function generate_Android_bp_file() {
             "symbol_level = 0"
             "angle_standalone = false"
             "angle_build_all = false"
+            "angle_expose_non_conformant_extensions_and_versions = true"
 
             # Build for 64-bit CPUs
             "target_cpu = \"$abi\""
@@ -56,6 +58,7 @@ function generate_Android_bp_file() {
             "angle_enable_d3d11 = false"
             "angle_enable_null = false"
             "angle_enable_metal = false"
+            "angle_enable_wgpu = false"
 
             # SwiftShader is loaded as the system Vulkan driver on Android, not compiled by ANGLE
             "angle_enable_swiftshader = false"
@@ -89,13 +92,12 @@ function generate_Android_bp_file() {
         gn desc ${GN_OUTPUT_DIRECTORY} --format=json "*" > ${GN_OUTPUT_DIRECTORY}/desc.$abi.json
     done
 
-    python scripts/generate_android_bp.py \
-        ${GN_OUTPUT_DIRECTORY}/desc.arm.json \
-        ${GN_OUTPUT_DIRECTORY}/desc.arm64.json \
-        ${GN_OUTPUT_DIRECTORY}/desc.x86.json \
-        ${GN_OUTPUT_DIRECTORY}/desc.x64.json > Android.bp
-
-    rm -rf ${GN_OUTPUT_DIRECTORY}
+    python3 scripts/generate_android_bp.py \
+        --gn_json_arm=${GN_OUTPUT_DIRECTORY}/desc.arm.json \
+        --gn_json_arm64=${GN_OUTPUT_DIRECTORY}/desc.arm64.json \
+        --gn_json_x86=${GN_OUTPUT_DIRECTORY}/desc.x86.json \
+        --gn_json_x64=${GN_OUTPUT_DIRECTORY}/desc.x64.json \
+        > Android.bp
 }
 
 
@@ -118,7 +120,6 @@ third_party_deps=(
     "third_party/vulkan-deps/spirv-tools/src"
     "third_party/vulkan-deps/vulkan-headers/src"
     "third_party/vulkan_memory_allocator"
-    "third_party/zlib"
 )
 
 root_add_deps=(
@@ -129,6 +130,7 @@ root_add_deps=(
 # Only add the parts of NDK and vulkan-deps that are required by ANGLE. The entire dep is too large.
 delete_only_deps=(
     "third_party/vulkan-deps"
+    "third_party/zlib"  # Replaced by Android's zlib; delete for gclient to work https://crbug.com/skia/14155#c3
 )
 
 # Delete dep directories so that gclient can check them out
@@ -136,11 +138,26 @@ for dep in "${third_party_deps[@]}" "${delete_only_deps[@]}"; do
     rm -rf "$dep"
 done
 
+# Remove cruft from any previous bad rolls (https://anglebug.com/8352)
+extra_third_party_removal_patterns=(
+   "*/_gclient_*"
+)
+
+for removal_dir in "${extra_third_party_removal_patterns[@]}"; do
+    find third_party -wholename "$removal_dir" -delete
+done
+
 # Sync all of ANGLE's deps so that 'gn gen' works
 python scripts/bootstrap.py
 gclient sync --reset --force --delete_unversioned_trees
 
+# Delete outdir to ensure a clean gn run.
+rm -rf ${GN_OUTPUT_DIRECTORY}
+
 generate_Android_bp_file
+
+# Delete outdir to cleanup after gn.
+rm -rf ${GN_OUTPUT_DIRECTORY}
 
 # Delete all unsupported 3rd party dependencies. Do this after generate_Android_bp_file, so
 # it has access to all of the necessary BUILD.gn files.
@@ -149,6 +166,8 @@ unsupported_third_party_deps=(
    "third_party/llvm-build"
    "third_party/android_build_tools"
    "third_party/android_sdk"
+   "third_party/android_toolchain"
+   "third_party/zlib"  # Replaced by Android's zlib
 )
 for unsupported_third_party_dep in "${unsupported_third_party_deps[@]}"; do
    rm -rf "$unsupported_third_party_dep"
@@ -162,6 +181,9 @@ for dep in "${third_party_deps[@]}"; do
    rm -rf "$dep"/.git
 done
 
+# Delete all the .gitmodules files, since they are not allowed in AOSP external projects.
+find . -name \.gitmodules -exec rm {} \;
+
 extra_removal_files=(
    # build/linux is hundreds of megs that aren't needed.
    "build/linux"
@@ -174,15 +196,16 @@ extra_removal_files=(
    "third_party/vulkan-deps/glslang/src/ndk_test/Android.mk"
    "third_party/vulkan-deps/spirv-tools/src/Android.mk"
    "third_party/vulkan-deps/spirv-tools/src/android_test/Android.mk"
+   "third_party/siso" # Not needed
 )
 
 for removal_file in "${extra_removal_files[@]}"; do
    rm -rf "$removal_file"
 done
 
-# Add all changes to third_party/ so we delete everything not explicitly allowed.
+# Add all changes under $root_add_deps so we delete everything not explicitly allowed.
 for root_add_dep in "${root_add_deps[@]}"; do
-git add -f "$root_add_dep/*"
+    git add -f $root_add_dep
 done
 
 # Done with depot_tools

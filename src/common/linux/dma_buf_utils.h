@@ -38,10 +38,15 @@
 #define DRM_FORMAT_YVU420 FOURCC('Y', 'V', '1', '2')
 #define DRM_FORMAT_NV12 FOURCC('N', 'V', '1', '2')
 #define DRM_FORMAT_P010 FOURCC('P', '0', '1', '0')
+#define DRM_FORMAT_ABGR16161616F FOURCC('A', 'B', '4', 'H')
 
 namespace angle
 {
 GLenum DrmFourCCFormatToGLInternalFormat(int format, bool *isYUV);
+
+#if defined(ANGLE_PLATFORM_LINUX) && defined(ANGLE_USES_GBM)
+int GLInternalFormatToGbmFourCCFormat(GLenum internalFormat);
+#endif
 
 #if defined(ANGLE_ENABLE_VULKAN)
 std::vector<int> VkFormatToDrmFourCCFormat(VkFormat format);

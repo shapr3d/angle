@@ -14,7 +14,7 @@
 #include "libANGLE/renderer/Format.h"
 #include "libANGLE/renderer/copyvertex.h"
 #include "libANGLE/renderer/renderer_utils.h"
-#include "platform/FeaturesVk_autogen.h"
+#include "platform/autogen/FeaturesVk_autogen.h"
 
 #include <array>
 
@@ -74,6 +74,7 @@ class Format final : private angle::NonCopyable
     Format();
 
     bool valid() const { return mIntendedGLFormat != 0; }
+    GLenum getIntendedGLFormat() const { return mIntendedGLFormat; }
 
     // The intended format is the front-end format. For Textures this usually correponds to a
     // GLenum in the headers. Buffer formats don't always have a corresponding GLenum type.
@@ -227,6 +228,39 @@ class FormatTable final : angle::NonCopyable
     std::array<Format, angle::kNumANGLEFormats> mFormatData;
 };
 
+// Extra data required for a renderable external format, for EXT_yuv_target support.
+// We have one of these structures per external format slot (angle::FormatID::EXTERNALn)
+// and allocate them to particular actual external formats in the order we see them.
+struct ExternalYuvFormatInfo
+{
+    // Vendor-specific external format value to be passed in VkExternalFormatANDROID
+    uint64_t externalFormat;
+    // Format the driver wants us to use for a temporary color attachment in order to render into
+    // this external format
+    VkFormat colorAttachmentFormat;
+    VkFormatFeatureFlags formatFeatures;
+};
+
+class ExternalFormatTable final : angle::NonCopyable
+{
+  public:
+    // Convert externalFormat to one of angle::FormatID::EXTERNALn so that we can pass around in
+    // ANGLE
+    angle::FormatID getOrAllocExternalFormatID(uint64_t externalFormat,
+                                               VkFormat colorAttachmentFormat,
+                                               VkFormatFeatureFlags formatFeatures);
+    const ExternalYuvFormatInfo &getExternalFormatInfo(angle::FormatID format) const;
+
+  private:
+    static constexpr size_t kMaxExternalFormatCountSupported =
+        ToUnderlying(angle::FormatID::EXTERNAL7) - ToUnderlying(angle::FormatID::EXTERNAL0) + 1;
+    // YUV rendering format cache. We build this table at run time when external formats are used.
+    angle::FixedVector<ExternalYuvFormatInfo, kMaxExternalFormatCountSupported> mExternalYuvFormats;
+    mutable std::mutex mExternalYuvFormatMutex;
+};
+
+bool IsYUVExternalFormat(angle::FormatID formatID);
+
 // This will return a reference to a VkFormatProperties with the feature flags supported
 // if the format is a mandatory format described in section 31.3.3. Required Format Support
 // of the Vulkan spec. If the vkFormat isn't mandatory, it will return a VkFormatProperties
@@ -234,6 +268,9 @@ class FormatTable final : angle::NonCopyable
 const VkFormatProperties &GetMandatoryFormatSupport(angle::FormatID formatID);
 
 VkImageUsageFlags GetMaximalImageUsageFlags(RendererVk *renderer, angle::FormatID formatID);
+VkImageCreateFlags GetMinimalImageCreateFlags(RendererVk *renderer,
+                                              gl::TextureType textureType,
+                                              VkImageUsageFlags usage);
 
 }  // namespace vk
 
@@ -241,6 +278,15 @@ VkImageUsageFlags GetMaximalImageUsageFlags(RendererVk *renderer, angle::FormatI
 bool HasFullTextureFormatSupport(RendererVk *renderer, angle::FormatID formatID);
 // Checks if a Vulkan format supports all the features except rendering.
 bool HasNonRenderableTextureFormatSupport(RendererVk *renderer, angle::FormatID formatID);
+// Checks if it is a ETC texture format
+bool IsETCFormat(angle::FormatID formatID);
+// Checks if it is a BC texture format
+bool IsBCFormat(angle::FormatID formatID);
+
+angle::FormatID GetTranscodeBCFormatID(angle::FormatID formatID);
+
+// Get Etc format cpu transcoding to Bc function.
+LoadImageFunctionInfo GetEtcToBcTransCodingFunc(angle::FormatID formatID);
 
 // Get the swizzle state based on format's requirements and emulations.
 gl::SwizzleState GetFormatSwizzle(const angle::Format &angleFormat, const bool sized);

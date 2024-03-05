@@ -25,7 +25,7 @@
 #include "libANGLE/renderer/gl/formatutilsgl.h"
 #include "libANGLE/renderer/gl/renderergl_utils.h"
 #include "libANGLE/renderer/renderer_utils.h"
-#include "platform/FeaturesGL_autogen.h"
+#include "platform/autogen/FeaturesGL_autogen.h"
 
 using angle::Vector2;
 
@@ -62,7 +62,7 @@ angle::Result CheckLinkStatus(const gl::Context *context,
     return angle::Result::Continue;
 }
 
-class ANGLE_NO_DISCARD ScopedGLState : angle::NonCopyable
+class [[nodiscard]] ScopedGLState : angle::NonCopyable
 {
   public:
     enum
@@ -85,6 +85,10 @@ class ANGLE_NO_DISCARD ScopedGLState : angle::NonCopyable
         }
         stateManager->setViewport(viewport);
         stateManager->setDepthRange(0.0f, 1.0f);
+        stateManager->setClipControl(gl::ClipOrigin::LowerLeft,
+                                     gl::ClipDepthMode::NegativeOneToOne);
+        stateManager->setClipDistancesEnable(gl::ClipDistanceEnableBits());
+        stateManager->setDepthClampEnabled(false);
         stateManager->setBlendEnabled(false);
         stateManager->setColorMask(true, true, true, true);
         stateManager->setSampleAlphaToCoverageEnabled(false);
@@ -92,8 +96,12 @@ class ANGLE_NO_DISCARD ScopedGLState : angle::NonCopyable
         stateManager->setDepthTestEnabled(false);
         stateManager->setStencilTestEnabled(false);
         stateManager->setCullFaceEnabled(false);
+        stateManager->setPolygonMode(gl::PolygonMode::Fill);
+        stateManager->setPolygonOffsetPointEnabled(false);
+        stateManager->setPolygonOffsetLineEnabled(false);
         stateManager->setPolygonOffsetFillEnabled(false);
         stateManager->setRasterizerDiscardEnabled(false);
+        stateManager->setLogicOpEnabled(false);
 
         stateManager->pauseTransformFeedback();
         return stateManager->pauseAllQueries(context);
@@ -292,6 +300,12 @@ angle::Result BlitGL::copyImageToLUMAWorkaroundTexture(const gl::Context *contex
     GLenum format   = gl::GetUnsizedFormat(internalFormat);
     GLenum readType = source->getImplementationColorReadType(context);
 
+    // getImplementationColorReadType aligns the type with ES client version
+    if (readType == GL_HALF_FLOAT_OES && mFunctions->standard == STANDARD_GL_DESKTOP)
+    {
+        readType = GL_HALF_FLOAT;
+    }
+
     gl::PixelUnpackState unpack;
     ANGLE_TRY(mStateManager->setPixelUnpackState(context, unpack));
     ANGLE_TRY(mStateManager->setPixelUnpackBuffer(
@@ -326,6 +340,12 @@ angle::Result BlitGL::copySubImageToLUMAWorkaroundTexture(const gl::Context *con
 
     GLenum readFormat = source->getImplementationColorReadFormat(context);
     GLenum readType   = source->getImplementationColorReadType(context);
+
+    // getImplementationColorReadType aligns the type with ES client version
+    if (readType == GL_HALF_FLOAT_OES && mFunctions->standard == STANDARD_GL_DESKTOP)
+    {
+        readType = GL_HALF_FLOAT;
+    }
 
     nativegl::CopyTexImageImageFormat copyTexImageFormat =
         nativegl::GetCopyTexImageImageFormat(mFunctions, mFeatures, readFormat, readType);
@@ -377,6 +397,7 @@ angle::Result BlitGL::copySubImageToLUMAWorkaroundTexture(const gl::Context *con
     ANGLE_GL_TRY(context, mFunctions->uniform2f(blitProgram->offsetLocation, 0.0, 0.0));
     ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->multiplyAlphaLocation, 0));
     ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->unMultiplyAlphaLocation, 0));
+    ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->transformLinearToSrgbLocation, 0));
 
     ANGLE_TRY(setVAOState(context));
     ANGLE_GL_TRY(context, mFunctions->drawArrays(GL_TRIANGLES, 0, 3));
@@ -558,6 +579,7 @@ angle::Result BlitGL::blitColorBufferWithShader(const gl::Context *context,
                                                 texCoordOffset.y()));
     ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->multiplyAlphaLocation, 0));
     ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->unMultiplyAlphaLocation, 0));
+    ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->transformLinearToSrgbLocation, 0));
 
     mStateManager->bindFramebuffer(GL_DRAW_FRAMEBUFFER, destFramebuffer);
 
@@ -584,6 +606,7 @@ angle::Result BlitGL::copySubTexture(const gl::Context *context,
                                      bool unpackFlipY,
                                      bool unpackPremultiplyAlpha,
                                      bool unpackUnmultiplyAlpha,
+                                     bool transformLinearToSrgb,
                                      bool *copySucceededOut)
 {
     ASSERT(source->getType() == gl::TextureType::_2D ||
@@ -675,6 +698,8 @@ angle::Result BlitGL::copySubTexture(const gl::Context *context,
         ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->unMultiplyAlphaLocation,
                                                     unpackUnmultiplyAlpha));
     }
+    ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->transformLinearToSrgbLocation,
+                                                transformLinearToSrgb));
 
     ANGLE_TRY(setVAOState(context));
     ANGLE_GL_TRY(context, mFunctions->drawArrays(GL_TRIANGLES, 0, 3));
@@ -748,7 +773,7 @@ angle::Result BlitGL::copySubTextureCPUReadback(const gl::Context *context,
             context, source, sourceLevel, sourceInternalFormatInfo.componentType,
             mScratchTextures[0], NonCubeTextureTypeToTarget(scratchTextureType), 0,
             sourceInternalFormatInfo.componentType, sourceSize, sourceArea, gl::Offset(0, 0, 0),
-            needsLumaWorkaround, lumaFormat, false, false, false, &copySucceeded));
+            needsLumaWorkaround, lumaFormat, false, false, false, false, &copySucceeded));
         if (!copySucceeded)
         {
             // No fallback options if we can't render to the scratch texture.
@@ -860,13 +885,29 @@ angle::Result BlitGL::copyTexSubImage(const gl::Context *context,
 
     mStateManager->bindTexture(dest->getType(), dest->getTextureID());
 
-    ANGLE_GL_TRY(context,
-                 mFunctions->copyTexSubImage2D(ToGLenum(destTarget), static_cast<GLint>(destLevel),
-                                               destOffset.x, destOffset.y, sourceArea.x,
-                                               sourceArea.y, sourceArea.width, sourceArea.height));
+    // Handle GL errors during copyTexSubImage2D manually since this can fail for certain formats on
+    // Pixel 2 and 4 and we have fallback paths (blit via shader) in the caller.
+    ClearErrors(context, __FILE__, __FUNCTION__, __LINE__);
+    mFunctions->copyTexSubImage2D(ToGLenum(destTarget), static_cast<GLint>(destLevel), destOffset.x,
+                                  destOffset.y, sourceArea.x, sourceArea.y, sourceArea.width,
+                                  sourceArea.height);
+    // Use getError to retrieve the error directly instead of using CheckError so that we don't
+    // propagate the error to the client and also so that we can handle INVALID_OPERATION specially.
+    const GLenum copyError = mFunctions->getError();
+    // Any error other than NO_ERROR or INVALID_OPERATION is propagated to the client as a failure.
+    // INVALID_OPERATION is ignored and instead copySucceeded is set to false so that the caller can
+    // fallback to another copy/blit implementation.
+    if (ANGLE_UNLIKELY(copyError != GL_NO_ERROR && copyError != GL_INVALID_OPERATION))
+    {
+        // Propagate the error to the client and check for other unexpected errors.
+        ANGLE_TRY(
+            HandleError(context, copyError, "copyTexSubImage2D", __FILE__, __FUNCTION__, __LINE__));
+    }
+    // Even if copyTexSubImage2D fails with GL_INVALID_OPERATION, check for other unexpected errors.
+    ANGLE_TRY(CheckError(context, "copyTexSubImage2D", __FILE__, __FUNCTION__, __LINE__));
 
     ANGLE_TRY(UnbindAttachment(context, mFunctions, GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0));
-    *copySucceededOut = true;
+    *copySucceededOut = copyError == GL_NO_ERROR;
     return angle::Result::Continue;
 }
 
@@ -1097,6 +1138,7 @@ angle::Result BlitGL::generateSRGBMipmap(const gl::Context *context,
     ANGLE_GL_TRY(context, mFunctions->uniform2f(blitProgram->offsetLocation, 0.0f, 0.0f));
     ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->multiplyAlphaLocation, 0));
     ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->unMultiplyAlphaLocation, 0));
+    ANGLE_GL_TRY(context, mFunctions->uniform1i(blitProgram->transformLinearToSrgbLocation, 0));
 
     mStateManager->bindTexture(sourceType, source->getTextureID());
     ANGLE_TRY(source->setMinFilter(context, GL_NEAREST));
@@ -1165,7 +1207,7 @@ angle::Result BlitGL::initializeResources(const gl::Context *context)
     {
         ANGLE_GL_TRY(context, mFunctions->genVertexArrays(1, &mVAO));
         mVAOState     = new VertexArrayStateGL(defaultVAOState->attributes.size(),
-                                           defaultVAOState->bindings.size());
+                                               defaultVAOState->bindings.size());
         mOwnsVAOState = true;
         ANGLE_TRY(setVAOState(context));
         ANGLE_TRY(initializeVAOState(context));
@@ -1477,12 +1519,26 @@ angle::Result BlitGL::getBlitProgram(const gl::Context *context,
             // Write the rest of the uniforms and varyings
             fsSourceStream << "uniform bool u_multiply_alpha;\n";
             fsSourceStream << "uniform bool u_unmultiply_alpha;\n";
+            fsSourceStream << "uniform bool u_transform_linear_to_srgb;\n";
             fsSourceStream << fsInputVariableQualifier << " vec2 v_texcoord;\n";
             if (!outputType.empty())
             {
                 fsSourceStream << fsOutputVariableQualifier << " " << outputType << " "
                                << outputVariableName << ";\n";
             }
+
+            // Write the linear to sRGB function.
+            fsSourceStream << "\n";
+            fsSourceStream << "float transformLinearToSrgb(float cl)\n";
+            fsSourceStream << "{\n";
+            fsSourceStream << "    if (cl <= 0.0)\n";
+            fsSourceStream << "        return 0.0;\n";
+            fsSourceStream << "    if (cl < 0.0031308)\n";
+            fsSourceStream << "        return 12.92 * cl;\n";
+            fsSourceStream << "    if (cl < 1.0)\n";
+            fsSourceStream << "        return 1.055 * pow(cl, 0.41666) - 0.055;\n";
+            fsSourceStream << "    return 1.0;\n";
+            fsSourceStream << "}\n";
 
             // Write the main body
             fsSourceStream << "\n";
@@ -1515,14 +1571,24 @@ angle::Result BlitGL::getBlitProgram(const gl::Context *context,
             fsSourceStream << "    " << samplerResultType << " color = " << sampleFunction
                            << "(u_source_texture, v_texcoord);\n";
 
-            // Perform the premultiply or unmultiply alpha logic
-            fsSourceStream << "    if (u_multiply_alpha)\n";
+            // Perform transformation from linear to sRGB encoding.
+            fsSourceStream << "    if (u_transform_linear_to_srgb)\n";
             fsSourceStream << "    {\n";
-            fsSourceStream << "        color.xyz = color.xyz * color.a;\n";
+            fsSourceStream << "        color.x = transformLinearToSrgb(color.x);\n";
+            fsSourceStream << "        color.y = transformLinearToSrgb(color.y);\n";
+            fsSourceStream << "        color.z = transformLinearToSrgb(color.z);\n";
             fsSourceStream << "    }\n";
+
+            // Perform unmultiply-alpha if requested.
             fsSourceStream << "    if (u_unmultiply_alpha && color.a != 0.0)\n";
             fsSourceStream << "    {\n";
             fsSourceStream << "         color.xyz = color.xyz / color.a;\n";
+            fsSourceStream << "    }\n";
+
+            // Perform premultiply-alpha if requested.
+            fsSourceStream << "    if (u_multiply_alpha)\n";
+            fsSourceStream << "    {\n";
+            fsSourceStream << "        color.xyz = color.xyz * color.a;\n";
             fsSourceStream << "    }\n";
 
             // Write the conversion to the destionation type
@@ -1559,6 +1625,8 @@ angle::Result BlitGL::getBlitProgram(const gl::Context *context,
             context, mFunctions->getUniformLocation(result.program, "u_multiply_alpha"));
         result.unMultiplyAlphaLocation = ANGLE_GL_TRY(
             context, mFunctions->getUniformLocation(result.program, "u_unmultiply_alpha"));
+        result.transformLinearToSrgbLocation = ANGLE_GL_TRY(
+            context, mFunctions->getUniformLocation(result.program, "u_transform_linear_to_srgb"));
     }
 
     *program = &result;

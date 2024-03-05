@@ -66,8 +66,7 @@ EGLMakeCurrentPerfTest::EGLMakeCurrentPerfTest()
     mEGLLibrary.reset(
         angle::OpenSharedLibrary(ANGLE_EGL_LIBRARY_NAME, angle::SearchType::ModuleDir));
 
-    angle::LoadProc getProc =
-        reinterpret_cast<angle::LoadProc>(mEGLLibrary->getSymbol("eglGetProcAddress"));
+    LoadProc getProc = reinterpret_cast<LoadProc>(mEGLLibrary->getSymbol("eglGetProcAddress"));
 
     if (!getProc)
     {
@@ -75,7 +74,9 @@ EGLMakeCurrentPerfTest::EGLMakeCurrentPerfTest()
     }
     else
     {
-        angle::LoadEGL(getProc);
+        LoadUtilEGL(getProc);
+        // Test harness warmup calls glFinish so we need GLES too.
+        LoadUtilGLES(getProc);
 
         if (!eglGetPlatformDisplayEXT)
         {
@@ -92,6 +93,8 @@ EGLMakeCurrentPerfTest::EGLMakeCurrentPerfTest()
 
 void EGLMakeCurrentPerfTest::SetUp()
 {
+    ANGLEPerfTest::SetUp();
+
     ASSERT_NE(EGL_NO_DISPLAY, mDisplay);
     EGLint majorVersion, minorVersion;
     ASSERT_TRUE(eglInitialize(mDisplay, &majorVersion, &minorVersion));

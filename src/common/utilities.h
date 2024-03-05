@@ -11,6 +11,7 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <GLSLANG/ShaderLang.h>
 
 #include <math.h>
 #include <string>
@@ -210,6 +211,8 @@ const char *GetGenericErrorMessage(GLenum error);
 
 unsigned int ElementTypeSize(GLenum elementType);
 
+bool IsMipmapFiltered(GLenum minFilterMode);
+
 template <typename T>
 T GetClampedVertexCount(size_t vertexCount)
 {
@@ -256,6 +259,15 @@ enum class SrgbWriteControlMode
     Linear  = 1
 };
 
+// For use with EXT_YUV_target
+// A sampler of external YUV textures may either implicitly perform RGB conversion (regular
+// samplerExternalOES) or skip the conversion and sample raw YUV values (__samplerExternal2DY2Y).
+enum class YuvSamplingMode
+{
+    Default = 0,
+    Y2Y     = 1
+};
+
 ShaderType GetShaderTypeFromBitfield(size_t singleShaderType);
 GLbitfield GetBitfieldFromShaderType(ShaderType shaderType);
 bool ShaderTypeSupportsTransformFeedback(ShaderType shaderType);
@@ -290,14 +302,24 @@ EGLenum GLComponentTypeToEGLColorComponentType(GLenum glComponentType);
 EGLClientBuffer GLObjectHandleToEGLClientBuffer(GLuint handle);
 }  // namespace gl_egl
 
-#if !defined(ANGLE_ENABLE_WINDOWS_UWP)
-std::string getTempPath();
-void writeFile(const char *path, const void *data, size_t size);
-#endif
+namespace angle
+{
+bool IsDrawEntryPoint(EntryPoint entryPoint);
+bool IsDispatchEntryPoint(EntryPoint entryPoint);
+bool IsClearEntryPoint(EntryPoint entryPoint);
+bool IsQueryEntryPoint(EntryPoint entryPoint);
 
-#if defined(ANGLE_PLATFORM_WINDOWS)
-void ScheduleYield();
-#endif
+template <typename T>
+void FillWithNullptr(T *array)
+{
+    // std::array::fill(nullptr) yields unoptimized, unrolled loop over array items
+    memset(array->data(), 0, array->size() * sizeof(*array->data()));
+    // sanity check for non-0 nullptr
+    ASSERT(array->data()[0] == nullptr);
+}
+}  // namespace angle
+
+void writeFile(const char *path, const void *data, size_t size);
 
 // Get the underlying type. Useful for indexing into arrays with enum values by avoiding the clutter
 // of the extraneous static_cast<>() calls.

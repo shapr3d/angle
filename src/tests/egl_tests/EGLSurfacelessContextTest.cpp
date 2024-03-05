@@ -18,16 +18,29 @@ using namespace angle;
 namespace
 {
 
-class EGLSurfacelessContextTest : public ANGLETest
+class EGLSurfacelessContextTest : public ANGLETest<>
 {
   public:
     EGLSurfacelessContextTest() : mDisplay(0) {}
 
     void testSetUp() override
     {
-        EGLint dispattrs[] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, GetParam().getRenderer(), EGL_NONE};
-        mDisplay           = eglGetPlatformDisplayEXT(
-            EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
+        EGLAttrib dispattrs[5] = {EGL_PLATFORM_ANGLE_TYPE_ANGLE, GetParam().getRenderer(), EGL_NONE,
+                                  EGL_NONE, EGL_NONE};
+
+        std::vector<const char *> enabledFeatureOverrides;
+        if (GetParam().isEnableRequested(Feature::ForceDelayedDeviceCreationForTesting))
+        {
+            enabledFeatureOverrides.push_back(
+                angle::GetFeatureName(Feature::ForceDelayedDeviceCreationForTesting));
+            enabledFeatureOverrides.push_back(nullptr);
+
+            dispattrs[2] = EGL_FEATURE_OVERRIDES_ENABLED_ANGLE;
+            dispattrs[3] = reinterpret_cast<EGLAttrib>(enabledFeatureOverrides.data());
+        }
+
+        mDisplay = eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE,
+                                         reinterpret_cast<void *>(EGL_DEFAULT_DISPLAY), dispattrs);
         ASSERT_TRUE(mDisplay != EGL_NO_DISPLAY);
 
         ASSERT_EGL_TRUE(eglInitialize(mDisplay, nullptr, nullptr));
@@ -271,10 +284,12 @@ TEST_P(EGLSurfacelessContextTest, Switcheroo)
 
 }  // anonymous namespace
 
-ANGLE_INSTANTIATE_TEST(EGLSurfacelessContextTest,
-                       WithNoFixture(ES2_D3D9()),
-                       WithNoFixture(ES2_D3D11()),
-                       WithNoFixture(ES2_METAL()),
-                       WithNoFixture(ES2_OPENGL()),
-                       WithNoFixture(ES2_OPENGLES()),
-                       WithNoFixture(ES2_VULKAN()));
+ANGLE_INSTANTIATE_TEST(
+    EGLSurfacelessContextTest,
+    WithNoFixture(ES2_D3D9()),
+    WithNoFixture(ES2_D3D11()),
+    WithNoFixture(ES2_METAL()),
+    WithNoFixture(ES2_OPENGL()),
+    WithNoFixture(ES2_OPENGLES()),
+    WithNoFixture(ES2_VULKAN()),
+    WithNoFixture(ES2_VULKAN()).enable(Feature::ForceDelayedDeviceCreationForTesting));

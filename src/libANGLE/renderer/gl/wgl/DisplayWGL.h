@@ -9,7 +9,6 @@
 #ifndef LIBANGLE_RENDERER_GL_WGL_DISPLAYWGL_H_
 #define LIBANGLE_RENDERER_GL_WGL_DISPLAYWGL_H_
 
-#include <thread>
 #include <unordered_map>
 
 #include "libANGLE/renderer/gl/DisplayGL.h"
@@ -21,7 +20,6 @@ namespace rx
 
 class FunctionsWGL;
 class RendererWGL;
-class WorkerContext;
 
 class DisplayWGL : public DisplayGL
 {
@@ -78,10 +76,6 @@ class DisplayWGL : public DisplayGL
 
     void destroyNativeContext(HGLRC context);
 
-    WorkerContext *createWorkerContext(std::string *infoLog,
-                                       HGLRC sharedContext,
-                                       const std::vector<int> &workerContextAttribs);
-
     void initializeFrontendFeatures(angle::FrontendFeatures *features) const override;
 
     void populateFeatureList(angle::FeatureList *features) override;
@@ -99,15 +93,8 @@ class DisplayWGL : public DisplayGL
 
     egl::Error makeCurrentSurfaceless(gl::Context *context) override;
 
-    HGLRC initializeContextAttribs(const egl::AttributeMap &eglAttributes,
-                                   HGLRC &sharedContext,
-                                   bool &useARBShare,
-                                   std::vector<int> &workerContextAttribs) const;
-    HGLRC createContextAttribs(const gl::Version &version,
-                               int profileMask,
-                               HGLRC &sharedContext,
-                               bool &useARBShare,
-                               std::vector<int> &workerContextAttribs) const;
+    HGLRC initializeContextAttribs(const egl::AttributeMap &eglAttributes) const;
+    HGLRC createContextAttribs(const gl::Version &version, int profileMask) const;
 
     egl::Error createRenderer(std::shared_ptr<RendererWGL> *outRenderer);
 
@@ -118,7 +105,7 @@ class DisplayWGL : public DisplayGL
         HDC dc     = nullptr;
         HGLRC glrc = nullptr;
     };
-    angle::HashMap<std::thread::id, CurrentNativeContext> mCurrentNativeContexts;
+    angle::HashMap<uint64_t, CurrentNativeContext> mCurrentNativeContexts;
 
     HMODULE mOpenGLModule;
 
@@ -148,8 +135,6 @@ class DisplayWGL : public DisplayGL
         size_t refCount;
     };
     std::map<IUnknown *, D3DObjectHandle> mRegisteredD3DDevices;
-
-    bool mUseARBShare;
 };
 
 }  // namespace rx

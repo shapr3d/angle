@@ -11,9 +11,11 @@
 
 #include "common/entry_points_enum_autogen.h"
 #include "common/string_utils.h"
+#include "image_util/loadimage.h"
 #include "libANGLE/renderer/OverlayImpl.h"
 #include "libANGLE/renderer/d3d/CompilerD3D.h"
 #include "libANGLE/renderer/d3d/ProgramD3D.h"
+#include "libANGLE/renderer/d3d/ProgramExecutableD3D.h"
 #include "libANGLE/renderer/d3d/RenderbufferD3D.h"
 #include "libANGLE/renderer/d3d/SamplerD3D.h"
 #include "libANGLE/renderer/d3d/ShaderD3D.h"
@@ -52,12 +54,17 @@ CompilerImpl *Context9::createCompiler()
 
 ShaderImpl *Context9::createShader(const gl::ShaderState &data)
 {
-    return new ShaderD3D(data, mRenderer->getFeatures(), mRenderer->getNativeExtensions());
+    return new ShaderD3D(data, mRenderer);
 }
 
 ProgramImpl *Context9::createProgram(const gl::ProgramState &data)
 {
     return new ProgramD3D(data, mRenderer);
+}
+
+ProgramExecutableImpl *Context9::createProgramExecutable(const gl::ProgramExecutable *executable)
+{
+    return new ProgramExecutableD3D(executable);
 }
 
 FramebufferImpl *Context9::createFramebuffer(const gl::FramebufferState &data)
@@ -381,7 +388,7 @@ gl::GraphicsResetStatus Context9::getResetStatus()
 
 angle::Result Context9::insertEventMarker(GLsizei length, const char *marker)
 {
-    mRenderer->getAnnotator()->setMarker(marker);
+    mRenderer->getAnnotator()->setMarker(/*context=*/nullptr, marker);
     return angle::Result::Continue;
 }
 
@@ -422,17 +429,20 @@ angle::Result Context9::popDebugGroup(const gl::Context *context)
 }
 
 angle::Result Context9::syncState(const gl::Context *context,
-                                  const gl::State::DirtyBits &dirtyBits,
-                                  const gl::State::DirtyBits &bitMask,
+                                  const gl::state::DirtyBits dirtyBits,
+                                  const gl::state::DirtyBits bitMask,
+                                  const gl::state::ExtendedDirtyBits extendedDirtyBits,
+                                  const gl::state::ExtendedDirtyBits extendedBitMask,
                                   gl::Command command)
 {
-    mRenderer->getStateManager()->syncState(mState, dirtyBits);
+    mRenderer->getStateManager()->syncState(mState, dirtyBits, extendedDirtyBits);
     return angle::Result::Continue;
 }
 
 GLint Context9::getGPUDisjoint()
 {
-    return mRenderer->getGPUDisjoint();
+    // Disjoint timer queries are not supported.
+    return false;
 }
 
 GLint64 Context9::getTimestamp()
@@ -464,6 +474,11 @@ const gl::Extensions &Context9::getNativeExtensions() const
 const gl::Limitations &Context9::getNativeLimitations() const
 {
     return mRenderer->getNativeLimitations();
+}
+
+const ShPixelLocalStorageOptions &Context9::getNativePixelLocalStorageOptions() const
+{
+    return mRenderer->getNativePixelLocalStorageOptions();
 }
 
 angle::Result Context9::dispatchCompute(const gl::Context *context,
@@ -520,5 +535,10 @@ void Context9::handleResult(HRESULT hr,
     errorStream << "Internal D3D9 error: " << gl::FmtHR(hr) << ": " << message;
 
     mErrors->handleError(glErrorCode, errorStream.str().c_str(), file, function, line);
+}
+
+angle::ImageLoadContext Context9::getImageLoadContext() const
+{
+    return getRenderer()->getDisplay()->getImageLoadContext();
 }
 }  // namespace rx
