@@ -32,7 +32,8 @@ namespace
 {
 // For the sake of feature name matching, underscore is ignored, and the names are matched
 // case-insensitive.  This allows feature names to be overriden both in snake_case (previously used
-// by ANGLE) and camelCase.
+// by ANGLE) and camelCase.  The second string (user-provided name) can end in `*` for wildcard
+// matching.
 bool FeatureNameMatch(const std::string &a, const std::string &b)
 {
     size_t ai = 0;
@@ -48,6 +49,11 @@ bool FeatureNameMatch(const std::string &a, const std::string &b)
         {
             ++bi;
         }
+        if (b[bi] == '*' && bi + 1 == b.size())
+        {
+            // If selected feature name ends in wildcard, match it.
+            return true;
+        }
         if (std::tolower(a[ai++]) != std::tolower(b[bi++]))
         {
             return false;
@@ -56,31 +62,53 @@ bool FeatureNameMatch(const std::string &a, const std::string &b)
 
     return ai == a.size() && bi == b.size();
 }
-
-// Search for a feature by name, matching it loosely so that both snake_case and camelCase names are
-// matched.
-FeatureInfo *FindFeatureByName(FeatureMap *features, const std::string &name)
-{
-    for (auto iter : *features)
-    {
-        if (FeatureNameMatch(iter.first, name))
-        {
-            return iter.second;
-        }
-    }
-    return nullptr;
-}
 }  // anonymous namespace
 
+// FeatureInfo implementation
+static const char *kFeatureOverrideTrue  = "true (override)";
+static const char *kFeatureOverrideFalse = "false (override)";
+
+void FeatureInfo::applyOverride(bool state)
+{
+    enabled     = state;
+    hasOverride = true;
+    condition   = state ? kFeatureOverrideTrue : kFeatureOverrideFalse;
+}
+
 // FeatureSetBase implementation
+void FeatureSetBase::reset()
+{
+    for (auto iter : members)
+    {
+        FeatureInfo *feature = iter.second;
+        feature->enabled     = false;
+        feature->hasOverride = false;
+    }
+}
+
 void FeatureSetBase::overrideFeatures(const std::vector<std::string> &featureNames, bool enabled)
 {
     for (const std::string &name : featureNames)
     {
-        FeatureInfo *feature = FindFeatureByName(&members, name);
-        if (feature != nullptr)
+        const bool hasWildcard = name.back() == '*';
+        for (auto iter : members)
         {
-            feature->enabled = enabled;
+            const std::string &featureName = iter.first;
+            FeatureInfo *feature           = iter.second;
+
+            if (!FeatureNameMatch(featureName, name))
+            {
+                continue;
+            }
+
+            feature->applyOverride(enabled);
+
+            // If name has a wildcard, try to match it with all features.  Otherwise, bail on first
+            // match, as names are unique.
+            if (!hasWildcard)
+            {
+                break;
+            }
         }
     }
 }
@@ -730,6 +758,7 @@ angle::Result IncompleteTextureSet::getIncompleteTexture(
         ANGLE_TRY(t->setStorage(mutableContext, createType, 1,
                                 incompleteTextureParam.sizedInternalFormat, colorSize));
     }
+    t->markInternalIncompleteTexture();
 
     if (type == gl::TextureType::CubeMap)
     {
@@ -1069,9 +1098,22 @@ void LogFeatureStatus(const angle::FeatureSetBase &features,
 {
     for (const std::string &name : featureNames)
     {
-        if (features.getFeatures().find(name) != features.getFeatures().end())
+        const bool hasWildcard = name.back() == '*';
+        for (auto iter : features.getFeatures())
         {
-            INFO() << "Feature: " << name << (enabled ? " enabled" : " disabled");
+            const std::string &featureName = iter.first;
+
+            if (!angle::FeatureNameMatch(featureName, name))
+            {
+                continue;
+            }
+
+            INFO() << "Feature: " << featureName << (enabled ? " enabled" : " disabled");
+
+            if (!hasWildcard)
+            {
+                break;
+            }
         }
     }
 }
@@ -1143,20 +1185,25 @@ void GetSamplePosition(GLsizei sampleCount, size_t index, GLfloat *xy)
 #define DRAW_CALL(drawType, instanced, bvbi) DRAW_##drawType##instanced##bvbi
 
 #define MULTI_DRAW_BLOCK(drawType, instanced, bvbi, hasDrawID, hasBaseVertex, hasBaseInstance) \
-    for (GLsizei drawID = 0; drawID < drawcount; ++drawID)                                     \
+    do                                                                                         \
     {                                                                                          \
-        if (ANGLE_NOOP_DRAW(instanced))                                                        \
+        for (GLsizei drawID = 0; drawID < drawcount; ++drawID)                                 \
         {                                                                                      \
-            ANGLE_TRY(contextImpl->handleNoopDrawEvent());                                     \
-            continue;                                                                          \
+            if (ANGLE_NOOP_DRAW(instanced))                                                    \
+            {                                                                                  \
+                ANGLE_TRY(contextImpl->handleNoopDrawEvent());                                 \
+                continue;                                                                      \
+            }                                                                                  \
+            ANGLE_SET_DRAW_ID_UNIFORM(hasDrawID)(drawID);                                      \
+            ANGLE_SET_BASE_VERTEX_UNIFORM(hasBaseVertex)(baseVertices[drawID]);                \
+            ANGLE_SET_BASE_INSTANCE_UNIFORM(hasBaseInstance)(baseInstances[drawID]);           \
+            ANGLE_TRY(DRAW_CALL(drawType, instanced, bvbi));                                   \
+            ANGLE_MARK_TRANSFORM_FEEDBACK_USAGE(instanced);                                    \
+            gl::MarkShaderStorageUsage(context);                                               \
         }                                                                                      \
-        ANGLE_SET_DRAW_ID_UNIFORM(hasDrawID)(drawID);                                          \
-        ANGLE_SET_BASE_VERTEX_UNIFORM(hasBaseVertex)(baseVertices[drawID]);                    \
-        ANGLE_SET_BASE_INSTANCE_UNIFORM(hasBaseInstance)(baseInstances[drawID]);               \
-        ANGLE_TRY(DRAW_CALL(drawType, instanced, bvbi));                                       \
-        ANGLE_MARK_TRANSFORM_FEEDBACK_USAGE(instanced);                                        \
-        gl::MarkShaderStorageUsage(context);                                                   \
-    }
+        /* reset the uniform to zero for non-multi-draw uses of the program */                 \
+        ANGLE_SET_DRAW_ID_UNIFORM(hasDrawID)(0);                                               \
+    } while (0)
 
 angle::Result MultiDrawArraysGeneral(ContextImpl *contextImpl,
                                      const gl::Context *context,
@@ -1165,15 +1212,15 @@ angle::Result MultiDrawArraysGeneral(ContextImpl *contextImpl,
                                      const GLsizei *counts,
                                      GLsizei drawcount)
 {
-    gl::Program *programObject = context->getState().getLinkedProgram(context);
-    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    gl::ProgramExecutable *executable = context->getState().getLinkedProgramExecutable(context);
+    const bool hasDrawID              = executable->hasDrawIDUniform();
     if (hasDrawID)
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _, _, 1, 0, 0)
+        MULTI_DRAW_BLOCK(ARRAYS, _, _, 1, 0, 0);
     }
     else
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _, _, 0, 0, 0)
+        MULTI_DRAW_BLOCK(ARRAYS, _, _, 0, 0, 0);
     }
 
     return angle::Result::Continue;
@@ -1213,15 +1260,15 @@ angle::Result MultiDrawArraysInstancedGeneral(ContextImpl *contextImpl,
                                               const GLsizei *instanceCounts,
                                               GLsizei drawcount)
 {
-    gl::Program *programObject = context->getState().getLinkedProgram(context);
-    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    gl::ProgramExecutable *executable = context->getState().getLinkedProgramExecutable(context);
+    const bool hasDrawID              = executable->hasDrawIDUniform();
     if (hasDrawID)
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _, 1, 0, 0)
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _, 1, 0, 0);
     }
     else
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _, 0, 0, 0)
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _, 0, 0, 0);
     }
 
     return angle::Result::Continue;
@@ -1235,15 +1282,15 @@ angle::Result MultiDrawElementsGeneral(ContextImpl *contextImpl,
                                        const GLvoid *const *indices,
                                        GLsizei drawcount)
 {
-    gl::Program *programObject = context->getState().getLinkedProgram(context);
-    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    gl::ProgramExecutable *executable = context->getState().getLinkedProgramExecutable(context);
+    const bool hasDrawID              = executable->hasDrawIDUniform();
     if (hasDrawID)
     {
-        MULTI_DRAW_BLOCK(ELEMENTS, _, _, 1, 0, 0)
+        MULTI_DRAW_BLOCK(ELEMENTS, _, _, 1, 0, 0);
     }
     else
     {
-        MULTI_DRAW_BLOCK(ELEMENTS, _, _, 0, 0, 0)
+        MULTI_DRAW_BLOCK(ELEMENTS, _, _, 0, 0, 0);
     }
 
     return angle::Result::Continue;
@@ -1286,15 +1333,15 @@ angle::Result MultiDrawElementsInstancedGeneral(ContextImpl *contextImpl,
                                                 const GLsizei *instanceCounts,
                                                 GLsizei drawcount)
 {
-    gl::Program *programObject = context->getState().getLinkedProgram(context);
-    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
+    gl::ProgramExecutable *executable = context->getState().getLinkedProgramExecutable(context);
+    const bool hasDrawID              = executable->hasDrawIDUniform();
     if (hasDrawID)
     {
-        MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _, 1, 0, 0)
+        MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _, 1, 0, 0);
     }
     else
     {
-        MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _, 0, 0, 0)
+        MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _, 0, 0, 0);
     }
 
     return angle::Result::Continue;
@@ -1309,26 +1356,26 @@ angle::Result MultiDrawArraysInstancedBaseInstanceGeneral(ContextImpl *contextIm
                                                           const GLuint *baseInstances,
                                                           GLsizei drawcount)
 {
-    gl::Program *programObject = context->getState().getLinkedProgram(context);
-    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
-    const bool hasBaseInstance = programObject && programObject->hasBaseInstanceUniform();
-    ResetBaseVertexBaseInstance resetUniforms(programObject, false, hasBaseInstance);
+    gl::ProgramExecutable *executable = context->getState().getLinkedProgramExecutable(context);
+    const bool hasDrawID              = executable->hasDrawIDUniform();
+    const bool hasBaseInstance        = executable->hasBaseInstanceUniform();
+    ResetBaseVertexBaseInstance resetUniforms(executable, false, hasBaseInstance);
 
     if (hasDrawID && hasBaseInstance)
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 1, 0, 1)
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 1, 0, 1);
     }
     else if (hasDrawID)
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 1, 0, 0)
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 1, 0, 0);
     }
     else if (hasBaseInstance)
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 0, 0, 1)
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 0, 0, 1);
     }
     else
     {
-        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 0, 0, 0)
+        MULTI_DRAW_BLOCK(ARRAYS, _INSTANCED, _BASE_INSTANCE, 0, 0, 0);
     }
 
     return angle::Result::Continue;
@@ -1345,11 +1392,11 @@ angle::Result MultiDrawElementsInstancedBaseVertexBaseInstanceGeneral(ContextImp
                                                                       const GLuint *baseInstances,
                                                                       GLsizei drawcount)
 {
-    gl::Program *programObject = context->getState().getLinkedProgram(context);
-    const bool hasDrawID       = programObject && programObject->hasDrawIDUniform();
-    const bool hasBaseVertex   = programObject && programObject->hasBaseVertexUniform();
-    const bool hasBaseInstance = programObject && programObject->hasBaseInstanceUniform();
-    ResetBaseVertexBaseInstance resetUniforms(programObject, hasBaseVertex, hasBaseInstance);
+    gl::ProgramExecutable *executable = context->getState().getLinkedProgramExecutable(context);
+    const bool hasDrawID              = executable->hasDrawIDUniform();
+    const bool hasBaseVertex          = executable->hasBaseVertexUniform();
+    const bool hasBaseInstance        = executable->hasBaseInstanceUniform();
+    ResetBaseVertexBaseInstance resetUniforms(executable, hasBaseVertex, hasBaseInstance);
 
     if (hasDrawID)
     {
@@ -1357,22 +1404,22 @@ angle::Result MultiDrawElementsInstancedBaseVertexBaseInstanceGeneral(ContextImp
         {
             if (hasBaseInstance)
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 1, 1)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 1, 1);
             }
             else
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 1, 0)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 1, 0);
             }
         }
         else
         {
             if (hasBaseInstance)
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 0, 1)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 0, 1);
             }
             else
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 0, 0)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 1, 0, 0);
             }
         }
     }
@@ -1382,22 +1429,22 @@ angle::Result MultiDrawElementsInstancedBaseVertexBaseInstanceGeneral(ContextImp
         {
             if (hasBaseInstance)
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 1, 1)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 1, 1);
             }
             else
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 1, 0)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 1, 0);
             }
         }
         else
         {
             if (hasBaseInstance)
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 0, 1)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 0, 1);
             }
             else
             {
-                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 0, 0)
+                MULTI_DRAW_BLOCK(ELEMENTS, _INSTANCED, _BASE_VERTEX_BASE_INSTANCE, 0, 0, 0);
             }
         }
     }
@@ -1405,27 +1452,27 @@ angle::Result MultiDrawElementsInstancedBaseVertexBaseInstanceGeneral(ContextImp
     return angle::Result::Continue;
 }
 
-ResetBaseVertexBaseInstance::ResetBaseVertexBaseInstance(gl::Program *programObject,
+ResetBaseVertexBaseInstance::ResetBaseVertexBaseInstance(gl::ProgramExecutable *executable,
                                                          bool resetBaseVertex,
                                                          bool resetBaseInstance)
-    : mProgramObject(programObject),
+    : mExecutable(executable),
       mResetBaseVertex(resetBaseVertex),
       mResetBaseInstance(resetBaseInstance)
 {}
 
 ResetBaseVertexBaseInstance::~ResetBaseVertexBaseInstance()
 {
-    if (mProgramObject)
+    if (mExecutable)
     {
         // Reset emulated uniforms to zero to avoid affecting other draw calls
         if (mResetBaseVertex)
         {
-            mProgramObject->setBaseVertexUniform(0);
+            mExecutable->setBaseVertexUniform(0);
         }
 
         if (mResetBaseInstance)
         {
-            mProgramObject->setBaseInstanceUniform(0);
+            mExecutable->setBaseInstanceUniform(0);
         }
     }
 }
@@ -1560,4 +1607,142 @@ bool IsOverridableLinearFormat(angle::FormatID formatID)
 {
     return ConvertToSRGB(formatID) != angle::FormatID::NONE;
 }
+
+template <bool swizzledLuma>
+const gl::ColorGeneric AdjustBorderColor(const angle::ColorGeneric &borderColorGeneric,
+                                         const angle::Format &format,
+                                         bool stencilMode)
+{
+    gl::ColorGeneric adjustedBorderColor = borderColorGeneric;
+
+    // Handle depth formats
+    if (format.hasDepthOrStencilBits())
+    {
+        if (stencilMode)
+        {
+            // Stencil component
+            adjustedBorderColor.colorUI.red = gl::clampForBitCount<unsigned int>(
+                adjustedBorderColor.colorUI.red, format.stencilBits);
+            // Unused components need to be reset because some backends simulate integer samplers
+            adjustedBorderColor.colorUI.green = 0u;
+            adjustedBorderColor.colorUI.blue  = 0u;
+            adjustedBorderColor.colorUI.alpha = 1u;
+        }
+        else
+        {
+            // Depth component
+            if (format.isUnorm())
+            {
+                adjustedBorderColor.colorF.red = gl::clamp01(adjustedBorderColor.colorF.red);
+            }
+        }
+
+        return adjustedBorderColor;
+    }
+
+    // Handle LUMA formats
+    if (format.isLUMA())
+    {
+        if (format.isUnorm())
+        {
+            adjustedBorderColor.colorF.red   = gl::clamp01(adjustedBorderColor.colorF.red);
+            adjustedBorderColor.colorF.alpha = gl::clamp01(adjustedBorderColor.colorF.alpha);
+        }
+
+        // Luma formats are either unpacked to RGBA or emulated with component swizzling
+        if (swizzledLuma)
+        {
+            // L is R (no-op); A is R; LA is RG
+            if (format.alphaBits > 0)
+            {
+                if (format.luminanceBits > 0)
+                {
+                    adjustedBorderColor.colorF.green = adjustedBorderColor.colorF.alpha;
+                }
+                else
+                {
+                    adjustedBorderColor.colorF.red = adjustedBorderColor.colorF.alpha;
+                }
+            }
+        }
+        else
+        {
+            // L is RGBX; A is A or RGBA; LA is RGBA
+            if (format.alphaBits == 0)
+            {
+                adjustedBorderColor.colorF.alpha = 1.0f;
+            }
+            else if (format.luminanceBits == 0)
+            {
+                adjustedBorderColor.colorF.red = 0.0f;
+            }
+            adjustedBorderColor.colorF.green = adjustedBorderColor.colorF.red;
+            adjustedBorderColor.colorF.blue  = adjustedBorderColor.colorF.red;
+        }
+
+        return adjustedBorderColor;
+    }
+
+    // Handle all other formats. Clamp border color to the ranges of color components.
+    // On some platforms, RGB formats may be emulated with RGBA, enforce opaque border color there.
+    if (format.isSint())
+    {
+        adjustedBorderColor.colorI.red =
+            gl::clampForBitCount<int>(adjustedBorderColor.colorI.red, format.redBits);
+        adjustedBorderColor.colorI.green =
+            gl::clampForBitCount<int>(adjustedBorderColor.colorI.green, format.greenBits);
+        adjustedBorderColor.colorI.blue =
+            gl::clampForBitCount<int>(adjustedBorderColor.colorI.blue, format.blueBits);
+        adjustedBorderColor.colorI.alpha =
+            format.alphaBits > 0
+                ? gl::clampForBitCount<int>(adjustedBorderColor.colorI.alpha, format.alphaBits)
+                : 1;
+    }
+    else if (format.isUint())
+    {
+        adjustedBorderColor.colorUI.red =
+            gl::clampForBitCount<unsigned int>(adjustedBorderColor.colorUI.red, format.redBits);
+        adjustedBorderColor.colorUI.green =
+            gl::clampForBitCount<unsigned int>(adjustedBorderColor.colorUI.green, format.greenBits);
+        adjustedBorderColor.colorUI.blue =
+            gl::clampForBitCount<unsigned int>(adjustedBorderColor.colorUI.blue, format.blueBits);
+        adjustedBorderColor.colorUI.alpha =
+            format.alphaBits > 0 ? gl::clampForBitCount<unsigned int>(
+                                       adjustedBorderColor.colorUI.alpha, format.alphaBits)
+                                 : 1;
+    }
+    else if (format.isSnorm())
+    {
+        // clamp between -1.0f and 1.0f
+        adjustedBorderColor.colorF.red   = gl::clamp(adjustedBorderColor.colorF.red, -1.0f, 1.0f);
+        adjustedBorderColor.colorF.green = gl::clamp(adjustedBorderColor.colorF.green, -1.0f, 1.0f);
+        adjustedBorderColor.colorF.blue  = gl::clamp(adjustedBorderColor.colorF.blue, -1.0f, 1.0f);
+        adjustedBorderColor.colorF.alpha =
+            format.alphaBits > 0 ? gl::clamp(adjustedBorderColor.colorF.alpha, -1.0f, 1.0f) : 1.0f;
+    }
+    else if (format.isUnorm())
+    {
+        // clamp between 0.0f and 1.0f
+        adjustedBorderColor.colorF.red   = gl::clamp01(adjustedBorderColor.colorF.red);
+        adjustedBorderColor.colorF.green = gl::clamp01(adjustedBorderColor.colorF.green);
+        adjustedBorderColor.colorF.blue  = gl::clamp01(adjustedBorderColor.colorF.blue);
+        adjustedBorderColor.colorF.alpha =
+            format.alphaBits > 0 ? gl::clamp01(adjustedBorderColor.colorF.alpha) : 1.0f;
+    }
+    else if (format.isFloat() && format.alphaBits == 0)
+    {
+        adjustedBorderColor.colorF.alpha = 1.0;
+    }
+
+    return adjustedBorderColor;
+}
+template const gl::ColorGeneric AdjustBorderColor<true>(
+    const angle::ColorGeneric &borderColorGeneric,
+    const angle::Format &format,
+    bool stencilMode);
+template const gl::ColorGeneric AdjustBorderColor<false>(
+    const angle::ColorGeneric &borderColorGeneric,
+    const angle::Format &format,
+    bool stencilMode);
+
 }  // namespace rx

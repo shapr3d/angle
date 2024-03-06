@@ -11,6 +11,7 @@
 import angle_format
 import json
 import math
+import os
 import pprint
 import re
 import sys
@@ -116,6 +117,8 @@ def get_channel_struct(angle_format):
     if 'BLOCK' in angle_format['id']:
         return None
     if 'VERTEX' in angle_format['id']:
+        return None
+    if 'EXTERNAL' in angle_format['id']:
         return None
 
     bits = angle_format['bits']
@@ -341,9 +344,9 @@ def json_to_table_data(format_id, json, angle_to_gl):
     parsed["isFixed"] = bool_str("FIXED" in format_id)
     parsed["isScaled"] = bool_str("SCALED" in format_id)
     parsed["isSRGB"] = bool_str("SRGB" in format_id)
-    # For now we only look for the 'PLANE' substring in format string. Expand this condition
+    # For now we only look for the 'PLANE' or 'EXTERNAL' substring in format string. Expand this condition
     # when adding support for YUV formats that have different identifying markers.
-    parsed["isYUV"] = bool_str("PLANE" in format_id)
+    parsed["isYUV"] = bool_str("PLANE" in format_id or "EXTERNAL" in format_id)
 
     parsed["vertexAttribType"] = "gl::VertexAttribType::" + get_vertex_attrib_type(format_id)
 
@@ -355,15 +358,18 @@ def json_to_table_data(format_id, json, angle_to_gl):
 def sorted_ds_first(all_angle):
     ds_sorted = []
     color_sorted = []
+    external_sorted = []
     for format_id in sorted(all_angle):
         if format_id == 'NONE':
             continue
-        if format_id[0] == 'D' or format_id[0] == 'S':
+        if 'EXTERNAL' in format_id:
+            external_sorted.append(format_id)
+        elif format_id[0] == 'D' or format_id[0] == 'S':
             ds_sorted.append(format_id)
         else:
             color_sorted.append(format_id)
 
-    return ds_sorted + color_sorted
+    return ds_sorted + color_sorted + external_sorted
 
 
 def parse_angle_format_table(all_angle, json_data, angle_to_gl):
@@ -424,7 +430,7 @@ def main():
     angle_format_cases = parse_angle_format_table(all_angle, json_data, angle_to_gl)
     switch_data = gen_map_switch_string(gl_to_angle)
     output_cpp = template_autogen_inl.format(
-        script_name=sys.argv[0],
+        script_name=os.path.basename(sys.argv[0]),
         angle_format_info_cases=angle_format_cases,
         angle_format_switch=switch_data,
         data_source_name=data_source_name)
@@ -435,7 +441,7 @@ def main():
     enum_data = gen_enum_string(all_angle)
     num_angle_formats = len(all_angle)
     output_h = template_autogen_h.format(
-        script_name=sys.argv[0],
+        script_name=os.path.basename(sys.argv[0]),
         angle_format_enum=enum_data,
         data_source_name=data_source_name,
         num_angle_formats=num_angle_formats)

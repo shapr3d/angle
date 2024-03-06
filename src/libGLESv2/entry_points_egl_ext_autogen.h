@@ -66,6 +66,11 @@ ANGLE_EXPORT EGLDeviceEXT EGLAPIENTRY EGL_CreateDeviceANGLE(EGLint device_type,
                                                             const EGLAttrib *attrib_list);
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_ReleaseDeviceANGLE(EGLDeviceEXT device);
 
+// EGL_ANGLE_external_context_and_surface
+ANGLE_EXPORT void EGLAPIENTRY EGL_AcquireExternalContextANGLE(EGLDisplay dpy,
+                                                              EGLSurface drawAndRead);
+ANGLE_EXPORT void EGLAPIENTRY EGL_ReleaseExternalContextANGLE(EGLDisplay dpy);
+
 // EGL_ANGLE_feature_control
 ANGLE_EXPORT const char *EGLAPIENTRY EGL_QueryStringiANGLE(EGLDisplay dpy,
                                                            EGLint name,
@@ -73,6 +78,9 @@ ANGLE_EXPORT const char *EGLAPIENTRY EGL_QueryStringiANGLE(EGLDisplay dpy,
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_QueryDisplayAttribANGLE(EGLDisplay dpy,
                                                                 EGLint attribute,
                                                                 EGLAttrib *value);
+
+// EGL_ANGLE_metal_shared_event_sync
+ANGLE_EXPORT void *EGLAPIENTRY EGL_CopyMetalSharedEventANGLE(EGLDisplay dpy, EGLSyncKHR sync);
 
 // EGL_ANGLE_power_preference
 ANGLE_EXPORT void EGLAPIENTRY EGL_ReleaseHighPowerGPUANGLE(EGLDisplay dpy, EGLContext ctx);
@@ -135,6 +143,9 @@ ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_ExportVkImageANGLE(EGLDisplay dpy,
                                                            EGLImage image,
                                                            void *vk_image,
                                                            void *vk_image_create_info);
+
+// EGL_ANGLE_wait_until_work_scheduled
+ANGLE_EXPORT void EGLAPIENTRY EGL_WaitUntilWorkScheduledANGLE(EGLDisplay dpy);
 
 // EGL_CHROMIUM_sync_control
 ANGLE_EXPORT EGLBoolean EGLAPIENTRY EGL_GetSyncValuesCHROMIUM(EGLDisplay dpy,

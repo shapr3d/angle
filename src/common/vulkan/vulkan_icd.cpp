@@ -16,8 +16,6 @@
 #include "common/debug.h"
 #include "common/system_utils.h"
 
-#include "common/vulkan/vk_google_filtering_precision.h"
-
 namespace
 {
 void ResetEnvironmentVar(const char *variableName, const Optional<std::string> &value)
@@ -47,15 +45,20 @@ namespace vk
 namespace
 {
 
-ANGLE_MAYBE_UNUSED const std::string WrapICDEnvironment(const char *icdEnvironment)
+[[maybe_unused]] const std::string WrapICDEnvironment(const char *icdEnvironment)
 {
     // The libraries are bundled into the module directory
-    std::string ret = ConcatenatePath(angle::GetModuleDirectory(), icdEnvironment);
+    std::string moduleDir = angle::GetModuleDirectory();
+    std::string ret       = ConcatenatePath(moduleDir, icdEnvironment);
+#if defined(ANGLE_PLATFORM_MACOS)
+    std::string moduleDirWithLibraries = ConcatenatePath(moduleDir, "Libraries");
+    ret += ":" + ConcatenatePath(moduleDirWithLibraries, icdEnvironment);
+#endif
     return ret;
 }
 
-ANGLE_MAYBE_UNUSED constexpr char kLoaderLayersPathEnv[] = "VK_LAYER_PATH";
-ANGLE_MAYBE_UNUSED constexpr char kLayerEnablesEnv[]     = "VK_LAYER_ENABLES";
+[[maybe_unused]] constexpr char kLoaderLayersPathEnv[] = "VK_LAYER_PATH";
+[[maybe_unused]] constexpr char kLayerEnablesEnv[]     = "VK_LAYER_ENABLES";
 
 constexpr char kLoaderICDFilenamesEnv[]              = "VK_ICD_FILENAMES";
 constexpr char kANGLEPreferredDeviceEnv[]            = "ANGLE_PREFERRED_DEVICE";
@@ -173,12 +176,6 @@ ScopedVkLoaderEnvironment::ScopedVkLoaderEnvironment(bool enableValidationLayers
             ERR() << "Error setting synchronization validation environment for Vulkan validation "
                      "layers init.";
         }
-
-        if (!setCustomExtensionsEnvironment())
-        {
-            ERR() << "Error setting custom list for custom extensions for Vulkan layers init.";
-            mEnableValidationLayers = false;
-        }
     }
 #endif  // !defined(ANGLE_PLATFORM_ANDROID)
 
@@ -228,47 +225,19 @@ bool ScopedVkLoaderEnvironment::setICDEnvironment(const char *icd)
     return mChangedICDEnv;
 }
 
-bool ScopedVkLoaderEnvironment::setCustomExtensionsEnvironment()
-{
-    struct CustomExtension
-    {
-        VkStructureType type;
-        size_t size;
-    };
-
-    CustomExtension customExtensions[] = {
-
-        {VK_STRUCTURE_TYPE_SAMPLER_FILTERING_PRECISION_GOOGLE,
-         sizeof(VkSamplerFilteringPrecisionGOOGLE)},
-
-    };
-
-    mPreviousCustomExtensionsEnv = angle::GetEnvironmentVar(kValidationLayersCustomSTypeListEnv);
-
-    std::stringstream strstr;
-    for (CustomExtension &extension : customExtensions)
-    {
-        if (strstr.tellp() != std::streampos(0))
-        {
-            strstr << angle::GetPathSeparatorForEnvironmentVar();
-        }
-
-        strstr << extension.type << angle::GetPathSeparatorForEnvironmentVar() << extension.size;
-    }
-
-    return angle::PrependPathToEnvironmentVar(kValidationLayersCustomSTypeListEnv,
-                                              strstr.str().c_str());
-}
-
 void ChoosePhysicalDevice(PFN_vkGetPhysicalDeviceProperties pGetPhysicalDeviceProperties,
                           const std::vector<VkPhysicalDevice> &physicalDevices,
                           vk::ICD preferredICD,
+                          uint32_t preferredVendorID,
+                          uint32_t preferredDeviceID,
                           VkPhysicalDevice *physicalDeviceOut,
                           VkPhysicalDeviceProperties *physicalDevicePropertiesOut)
 {
     ASSERT(!physicalDevices.empty());
 
     ICDFilterFunc filter = GetFilterForICD(preferredICD);
+
+    const bool shouldChooseByID = (preferredVendorID != 0 || preferredDeviceID != 0);
 
     for (const VkPhysicalDevice &physicalDevice : physicalDevices)
     {
@@ -277,6 +246,32 @@ void ChoosePhysicalDevice(PFN_vkGetPhysicalDeviceProperties pGetPhysicalDevicePr
         {
             *physicalDeviceOut = physicalDevice;
             return;
+        }
+
+        if (shouldChooseByID)
+        {
+            // NOTE: If the system has multiple GPUs with the same vendor and
+            // device IDs, this will arbitrarily select one of them.
+            bool matchVendorID = true;
+            bool matchDeviceID = true;
+
+            if (preferredVendorID != 0 &&
+                preferredVendorID != physicalDevicePropertiesOut->vendorID)
+            {
+                matchVendorID = false;
+            }
+
+            if (preferredDeviceID != 0 &&
+                preferredDeviceID != physicalDevicePropertiesOut->deviceID)
+            {
+                matchDeviceID = false;
+            }
+
+            if (matchVendorID && matchDeviceID)
+            {
+                *physicalDeviceOut = physicalDevice;
+                return;
+            }
         }
     }
 

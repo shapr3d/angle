@@ -15,25 +15,9 @@
 
 namespace angle
 {
-bool gUseAndroidOpenGLTlsSlot;
-std::atomic_int gProcessCleanupRefCount(0);
-
-void ProcessCleanupCallback(void *ptr)
-{
-    egl::Thread *thread = static_cast<egl::Thread *>(ptr);
-    ASSERT(thread);
-
-    ASSERT(gProcessCleanupRefCount > 0);
-    if (--gProcessCleanupRefCount == 0)
-    {
-        egl::Display::EglDisplaySet displays = egl::Display::GetEglDisplaySet();
-        for (egl::Display *display : displays)
-        {
-            ASSERT(display);
-            (void)display->terminate(thread, egl::Display::TerminateReason::ProcessExit);
-        }
-    }
-}
+#if defined(ANGLE_USE_ANDROID_TLS_SLOT)
+bool gUseAndroidOpenGLTlsSlot = false;
+#endif
 }  // namespace angle
 
 namespace egl
@@ -109,6 +93,10 @@ EGLenum Thread::getAPI() const
 void Thread::setCurrent(gl::Context *context)
 {
     mContext = context;
+    if (mContext)
+    {
+        ASSERT(mContext->getDisplay());
+    }
 }
 
 Surface *Thread::getCurrentDrawSurface() const

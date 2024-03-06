@@ -6,28 +6,25 @@
 
 // DisplayCGL.mm: CGL implementation of egl::Display
 
-#include "common/platform.h"
+#import "libANGLE/renderer/gl/cgl/DisplayCGL.h"
 
-#if defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)
+#import <Cocoa/Cocoa.h>
+#import <EGL/eglext.h>
+#import <dlfcn.h>
 
-#    include "libANGLE/renderer/gl/cgl/DisplayCGL.h"
-
-#    import <Cocoa/Cocoa.h>
-#    include <EGL/eglext.h>
-#    include <dlfcn.h>
-
-#    include "common/debug.h"
-#    include "common/gl/cgl/FunctionsCGL.h"
-#    include "gpu_info_util/SystemInfo.h"
-#    include "libANGLE/Display.h"
-#    include "libANGLE/Error.h"
-#    include "libANGLE/renderer/gl/cgl/ContextCGL.h"
-#    include "libANGLE/renderer/gl/cgl/DeviceCGL.h"
-#    include "libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.h"
-#    include "libANGLE/renderer/gl/cgl/PbufferSurfaceCGL.h"
-#    include "libANGLE/renderer/gl/cgl/RendererCGL.h"
-#    include "libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h"
-#    include "platform/PlatformMethods.h"
+#import "common/debug.h"
+#import "common/gl/cgl/FunctionsCGL.h"
+#import "common/system_utils.h"
+#import "gpu_info_util/SystemInfo_internal.h"
+#import "libANGLE/Display.h"
+#import "libANGLE/Error.h"
+#import "libANGLE/renderer/gl/RendererGL.h"
+#import "libANGLE/renderer/gl/cgl/ContextCGL.h"
+#import "libANGLE/renderer/gl/cgl/DeviceCGL.h"
+#import "libANGLE/renderer/gl/cgl/IOSurfaceSurfaceCGL.h"
+#import "libANGLE/renderer/gl/cgl/PbufferSurfaceCGL.h"
+#import "libANGLE/renderer/gl/cgl/WindowSurfaceCGL.h"
+#import "platform/PlatformMethods.h"
 
 namespace
 {
@@ -36,7 +33,7 @@ const char *kDefaultOpenGLDylibName =
     "/System/Library/Frameworks/OpenGL.framework/Libraries/libGL.dylib";
 const char *kFallbackOpenGLDylibName = "GL";
 
-}
+}  // namespace
 
 namespace rx
 {
@@ -235,7 +232,7 @@ egl::Error DisplayCGL::initialize(egl::Display *display)
     {
         return egl::EglNotInitialized() << "Could not make the CGL context current.";
     }
-    mThreadsWithCurrentContext.insert(std::this_thread::get_id());
+    mThreadsWithCurrentContext.insert(angle::GetCurrentThreadUniqueId());
 
     // There is no equivalent getProcAddress in CGL so we open the dylib directly
     void *handle = dlopen(kDefaultOpenGLDylibName, RTLD_NOW);
@@ -251,7 +248,7 @@ egl::Error DisplayCGL::initialize(egl::Display *display)
     std::unique_ptr<FunctionsGL> functionsGL(new FunctionsGLCGL(handle));
     functionsGL->initialize(display->getAttributeMap());
 
-    mRenderer.reset(new RendererCGL(std::move(functionsGL), display->getAttributeMap(), this));
+    mRenderer.reset(new RendererGL(std::move(functionsGL), display->getAttributeMap(), this));
 
     const gl::Version &maxVersion = mRenderer->getMaxSupportedESVersion();
     if (maxVersion < gl::Version(2, 0))
@@ -297,7 +294,7 @@ egl::Error DisplayCGL::prepareForCall()
     {
         return egl::EglNotInitialized() << "Context not allocated.";
     }
-    auto threadId = std::this_thread::get_id();
+    auto threadId = angle::GetCurrentThreadUniqueId();
     if (mDeviceContextIsVolatile ||
         mThreadsWithCurrentContext.find(threadId) == mThreadsWithCurrentContext.end())
     {
@@ -313,7 +310,7 @@ egl::Error DisplayCGL::prepareForCall()
 egl::Error DisplayCGL::releaseThread()
 {
     ASSERT(mContext);
-    auto threadId = std::this_thread::get_id();
+    auto threadId = angle::GetCurrentThreadUniqueId();
     if (mThreadsWithCurrentContext.find(threadId) != mThreadsWithCurrentContext.end())
     {
         if (CGLSetCurrentContext(nullptr) != kCGLNoError)
@@ -356,7 +353,7 @@ SurfaceImpl *DisplayCGL::createPbufferFromClientBuffer(const egl::SurfaceState &
 {
     ASSERT(buftype == EGL_IOSURFACE_ANGLE);
 
-    return new IOSurfaceSurfaceCGL(state, mContext, clientBuffer, attribs);
+    return new IOSurfaceSurfaceCGL(state, getRenderer(), mContext, clientBuffer, attribs);
 }
 
 SurfaceImpl *DisplayCGL::createPixmapSurface(const egl::SurfaceState &state,
@@ -503,8 +500,9 @@ CGLPixelFormatObj DisplayCGL::getCGLPixelFormat() const
 
 void DisplayCGL::generateExtensions(egl::DisplayExtensions *outExtensions) const
 {
-    outExtensions->iosurfaceClientBuffer = true;
-    outExtensions->surfacelessContext    = true;
+    outExtensions->iosurfaceClientBuffer  = true;
+    outExtensions->surfacelessContext     = true;
+    outExtensions->waitUntilWorkScheduled = true;
 
     // Contexts are virtualized so textures and semaphores can be shared globally
     outExtensions->displayTextureShareGroup   = true;
@@ -535,6 +533,15 @@ egl::Error DisplayCGL::waitNative(const gl::Context *context, EGLint engine)
     return egl::NoError();
 }
 
+egl::Error DisplayCGL::waitUntilWorkScheduled()
+{
+    for (auto context : mState.contextMap)
+    {
+        context.second->flush();
+    }
+    return egl::NoError();
+}
+
 gl::Version DisplayCGL::getMaxSupportedESVersion() const
 {
     return mRenderer->getMaxSupportedESVersion();
@@ -545,57 +552,6 @@ egl::Error DisplayCGL::makeCurrentSurfaceless(gl::Context *context)
     // We have nothing to do as mContext is always current, and that CGL is surfaceless by
     // default.
     return egl::NoError();
-}
-
-class WorkerContextCGL final : public WorkerContext
-{
-  public:
-    WorkerContextCGL(CGLContextObj context);
-    ~WorkerContextCGL() override;
-
-    bool makeCurrent() override;
-    void unmakeCurrent() override;
-
-  private:
-    CGLContextObj mContext;
-};
-
-WorkerContextCGL::WorkerContextCGL(CGLContextObj context) : mContext(context) {}
-
-WorkerContextCGL::~WorkerContextCGL()
-{
-    CGLSetCurrentContext(nullptr);
-    CGLReleaseContext(mContext);
-    mContext = nullptr;
-}
-
-bool WorkerContextCGL::makeCurrent()
-{
-    CGLError error = CGLSetCurrentContext(mContext);
-    if (error != kCGLNoError)
-    {
-        ERR() << "Unable to make gl context current.\n";
-        return false;
-    }
-    return true;
-}
-
-void WorkerContextCGL::unmakeCurrent()
-{
-    CGLSetCurrentContext(nullptr);
-}
-
-WorkerContext *DisplayCGL::createWorkerContext(std::string *infoLog)
-{
-    CGLContextObj context = nullptr;
-    CGLCreateContext(mPixelFormat, mContext, &context);
-    if (context == nullptr)
-    {
-        *infoLog += "Could not create the CGL context.";
-        return nullptr;
-    }
-
-    return new WorkerContextCGL(context);
 }
 
 void DisplayCGL::initializeFrontendFeatures(angle::FrontendFeatures *features) const
@@ -732,5 +688,3 @@ void DisplayCGL::setContextToGPU(uint64_t gpuID, GLint virtualScreen)
 }
 
 }  // namespace rx
-
-#endif  // defined(ANGLE_PLATFORM_MACOS) || defined(ANGLE_PLATFORM_MACCATALYST)

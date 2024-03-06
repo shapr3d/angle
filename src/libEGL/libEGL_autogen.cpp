@@ -25,9 +25,9 @@ namespace
 bool gLoaded          = false;
 void *gEntryPointsLib = nullptr;
 
-angle::GenericProc KHRONOS_APIENTRY GlobalLoad(const char *symbol)
+GenericProc KHRONOS_APIENTRY GlobalLoad(const char *symbol)
 {
-    return reinterpret_cast<angle::GenericProc>(angle::GetLibrarySymbol(gEntryPointsLib, symbol));
+    return reinterpret_cast<GenericProc>(angle::GetLibrarySymbol(gEntryPointsLib, symbol));
 }
 
 void EnsureEGLLoaded()
@@ -38,11 +38,11 @@ void EnsureEGLLoaded()
     }
 
     std::string errorOut;
-    gEntryPointsLib = OpenSystemLibraryAndGetError(ANGLE_GLESV2_LIBRARY_NAME,
+    gEntryPointsLib = OpenSystemLibraryAndGetError(ANGLE_DISPATCH_LIBRARY,
                                                    angle::SearchType::ModuleDir, &errorOut);
     if (gEntryPointsLib)
     {
-        angle::LoadEGL_EGL(GlobalLoad);
+        LoadLibEGL_EGL(GlobalLoad);
         gLoaded = true;
     }
     else
@@ -480,6 +480,19 @@ EGLBoolean EGLAPIENTRY eglReleaseDeviceANGLE(EGLDeviceEXT device)
     return EGL_ReleaseDeviceANGLE(device);
 }
 
+// EGL_ANGLE_external_context_and_surface
+void EGLAPIENTRY eglAcquireExternalContextANGLE(EGLDisplay dpy, EGLSurface drawAndRead)
+{
+    EnsureEGLLoaded();
+    return EGL_AcquireExternalContextANGLE(dpy, drawAndRead);
+}
+
+void EGLAPIENTRY eglReleaseExternalContextANGLE(EGLDisplay dpy)
+{
+    EnsureEGLLoaded();
+    return EGL_ReleaseExternalContextANGLE(dpy);
+}
+
 // EGL_ANGLE_feature_control
 const char *EGLAPIENTRY eglQueryStringiANGLE(EGLDisplay dpy, EGLint name, EGLint index)
 {
@@ -493,6 +506,13 @@ EGLBoolean EGLAPIENTRY eglQueryDisplayAttribANGLE(EGLDisplay dpy,
 {
     EnsureEGLLoaded();
     return EGL_QueryDisplayAttribANGLE(dpy, attribute, value);
+}
+
+// EGL_ANGLE_metal_shared_event_sync
+void *EGLAPIENTRY eglCopyMetalSharedEventANGLE(EGLDisplay dpy, EGLSyncKHR sync)
+{
+    EnsureEGLLoaded();
+    return EGL_CopyMetalSharedEventANGLE(dpy, sync);
 }
 
 // EGL_ANGLE_power_preference
@@ -616,6 +636,13 @@ EGLBoolean EGLAPIENTRY eglExportVkImageANGLE(EGLDisplay dpy,
 {
     EnsureEGLLoaded();
     return EGL_ExportVkImageANGLE(dpy, image, vk_image, vk_image_create_info);
+}
+
+// EGL_ANGLE_wait_until_work_scheduled
+void EGLAPIENTRY eglWaitUntilWorkScheduledANGLE(EGLDisplay dpy)
+{
+    EnsureEGLLoaded();
+    return EGL_WaitUntilWorkScheduledANGLE(dpy);
 }
 
 // EGL_CHROMIUM_sync_control

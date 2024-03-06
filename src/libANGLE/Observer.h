@@ -57,18 +57,31 @@ enum class SubjectMessage
 
     // Indicates an external change to the default framebuffer.
     SurfaceChanged,
+    // Indicates the system framebuffer's swapchain changed, i.e. color buffer changed but no
+    // depth/stencil buffer change.
+    SwapchainImageChanged,
 
     // Indicates a separable program's textures or images changed in the ProgramExecutable.
     ProgramTextureOrImageBindingChanged,
-    // Indicates a separable program was successfully re-linked.
+    // Indicates a program or pipeline is being re-linked.  This is used to make sure the Context or
+    // ProgramPipeline that reference the program/pipeline wait for it to finish linking.
+    ProgramUnlinked,
+    // Indicates a program or pipeline was successfully re-linked.
     ProgramRelinked,
     // Indicates a separable program's sampler uniforms were updated.
     SamplerUniformsUpdated,
     // Other types of uniform change.
     ProgramUniformUpdated,
+    // Indicates a program's uniform block binding has changed
+    ProgramUniformBlockBindingUpdated,
 
     // Indicates a Storage of back-end in gl::Texture has been released.
     StorageReleased,
+
+    // Sent when the GLuint ID for a gl::Texture is being deleted via glDeleteTextures. The
+    // texture may stay alive due to orphaning, but will no longer be directly accessible by the GL
+    // API.
+    TextureIDDeleted,
 
     // Indicates that all pending updates are complete in the subject.
     InitializationComplete,
@@ -89,6 +102,9 @@ class ObserverBindingBase
         : mObserver(observer), mIndex(subjectIndex)
     {}
     virtual ~ObserverBindingBase() {}
+
+    ObserverBindingBase(const ObserverBindingBase &other)            = default;
+    ObserverBindingBase &operator=(const ObserverBindingBase &other) = default;
 
     ObserverInterface *getObserver() const { return mObserver; }
     SubjectIndex getSubjectIndex() const { return mIndex; }
@@ -135,6 +151,7 @@ class Subject : NonCopyable
 class ObserverBinding final : public ObserverBindingBase
 {
   public:
+    ObserverBinding();
     ObserverBinding(ObserverInterface *observer, SubjectIndex index);
     ~ObserverBinding() override;
     ObserverBinding(const ObserverBinding &other);

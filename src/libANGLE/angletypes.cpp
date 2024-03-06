@@ -42,27 +42,44 @@ bool IsAdvancedBlendEquation(gl::BlendEquationType blendEquation)
     return blendEquation >= gl::BlendEquationType::Multiply &&
            blendEquation <= gl::BlendEquationType::HslLuminosity;
 }
+
+bool IsExtendedBlendFactor(gl::BlendFactorType blendFactor)
+{
+    return blendFactor >= gl::BlendFactorType::Src1Alpha &&
+           blendFactor <= gl::BlendFactorType::OneMinusSrc1Alpha;
+}
 }  // anonymous namespace
 
 RasterizerState::RasterizerState()
 {
     memset(this, 0, sizeof(RasterizerState));
 
-    rasterizerDiscard   = false;
     cullFace            = false;
     cullMode            = CullFaceMode::Back;
     frontFace           = GL_CCW;
+    polygonMode         = PolygonMode::Fill;
+    polygonOffsetPoint  = false;
+    polygonOffsetLine   = false;
     polygonOffsetFill   = false;
     polygonOffsetFactor = 0.0f;
     polygonOffsetUnits  = 0.0f;
+    polygonOffsetClamp  = 0.0f;
+    depthClamp          = false;
     pointDrawMode       = false;
     multiSample         = false;
+    rasterizerDiscard   = false;
     dither              = true;
 }
 
 RasterizerState::RasterizerState(const RasterizerState &other)
 {
     memcpy(this, &other, sizeof(RasterizerState));
+}
+
+RasterizerState &RasterizerState::operator=(const RasterizerState &other)
+{
+    memcpy(this, &other, sizeof(RasterizerState));
+    return *this;
 }
 
 bool operator==(const RasterizerState &a, const RasterizerState &b)
@@ -132,6 +149,12 @@ DepthStencilState::DepthStencilState()
 DepthStencilState::DepthStencilState(const DepthStencilState &other)
 {
     memcpy(this, &other, sizeof(DepthStencilState));
+}
+
+DepthStencilState &DepthStencilState::operator=(const DepthStencilState &other)
+{
+    memcpy(this, &other, sizeof(DepthStencilState));
+    return *this;
 }
 
 bool DepthStencilState::isDepthMaskedOut() const
@@ -517,18 +540,6 @@ void BlendStateExt::setEquationsIndexed(const size_t index,
     mUsesAdvancedBlendEquationMask.set(index, IsAdvancedBlendEquation(colorEquation));
 }
 
-GLenum BlendStateExt::getEquationColorIndexed(size_t index) const
-{
-    ASSERT(index < mDrawBufferCount);
-    return ToGLenum(EquationStorage::GetValueIndexed(index, mEquationColor));
-}
-
-GLenum BlendStateExt::getEquationAlphaIndexed(size_t index) const
-{
-    ASSERT(index < mDrawBufferCount);
-    return ToGLenum(EquationStorage::GetValueIndexed(index, mEquationAlpha));
-}
-
 DrawBufferMask BlendStateExt::compareEquations(const EquationStorage::Type color,
                                                const EquationStorage::Type alpha) const
 {
@@ -539,6 +550,12 @@ DrawBufferMask BlendStateExt::compareEquations(const EquationStorage::Type color
 BlendStateExt::FactorStorage::Type BlendStateExt::expandFactorValue(const GLenum func) const
 {
     return FactorStorage::GetReplicatedValue(FromGLenum<BlendFactorType>(func), mParameterMask);
+}
+
+BlendStateExt::FactorStorage::Type BlendStateExt::expandFactorValue(
+    const gl::BlendFactorType func) const
+{
+    return FactorStorage::GetReplicatedValue(func, mParameterMask);
 }
 
 BlendStateExt::FactorStorage::Type BlendStateExt::expandSrcColorIndexed(const size_t index) const
@@ -574,10 +591,44 @@ void BlendStateExt::setFactors(const GLenum srcColor,
                                const GLenum srcAlpha,
                                const GLenum dstAlpha)
 {
-    mSrcColor = expandFactorValue(srcColor);
-    mDstColor = expandFactorValue(dstColor);
-    mSrcAlpha = expandFactorValue(srcAlpha);
-    mDstAlpha = expandFactorValue(dstAlpha);
+    const gl::BlendFactorType srcColorFactor = FromGLenum<BlendFactorType>(srcColor);
+    const gl::BlendFactorType dstColorFactor = FromGLenum<BlendFactorType>(dstColor);
+    const gl::BlendFactorType srcAlphaFactor = FromGLenum<BlendFactorType>(srcAlpha);
+    const gl::BlendFactorType dstAlphaFactor = FromGLenum<BlendFactorType>(dstAlpha);
+
+    mSrcColor = expandFactorValue(srcColorFactor);
+    mDstColor = expandFactorValue(dstColorFactor);
+    mSrcAlpha = expandFactorValue(srcAlphaFactor);
+    mDstAlpha = expandFactorValue(dstAlphaFactor);
+
+    if (IsExtendedBlendFactor(srcColorFactor) || IsExtendedBlendFactor(dstColorFactor) ||
+        IsExtendedBlendFactor(srcAlphaFactor) || IsExtendedBlendFactor(dstAlphaFactor))
+    {
+        mUsesExtendedBlendFactorMask = mAllEnabledMask;
+    }
+    else
+    {
+        mUsesExtendedBlendFactorMask.reset();
+    }
+}
+
+void BlendStateExt::setFactorsIndexed(const size_t index,
+                                      const gl::BlendFactorType srcColorFactor,
+                                      const gl::BlendFactorType dstColorFactor,
+                                      const gl::BlendFactorType srcAlphaFactor,
+                                      const gl::BlendFactorType dstAlphaFactor)
+{
+    ASSERT(index < mDrawBufferCount);
+
+    FactorStorage::SetValueIndexed(index, srcColorFactor, &mSrcColor);
+    FactorStorage::SetValueIndexed(index, dstColorFactor, &mDstColor);
+    FactorStorage::SetValueIndexed(index, srcAlphaFactor, &mSrcAlpha);
+    FactorStorage::SetValueIndexed(index, dstAlphaFactor, &mDstAlpha);
+
+    const bool isExtended =
+        IsExtendedBlendFactor(srcColorFactor) || IsExtendedBlendFactor(dstColorFactor) ||
+        IsExtendedBlendFactor(srcAlphaFactor) || IsExtendedBlendFactor(dstAlphaFactor);
+    mUsesExtendedBlendFactorMask.set(index, isExtended);
 }
 
 void BlendStateExt::setFactorsIndexed(const size_t index,
@@ -586,11 +637,12 @@ void BlendStateExt::setFactorsIndexed(const size_t index,
                                       const GLenum srcAlpha,
                                       const GLenum dstAlpha)
 {
-    ASSERT(index < mDrawBufferCount);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(srcColor), &mSrcColor);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(dstColor), &mDstColor);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(srcAlpha), &mSrcAlpha);
-    FactorStorage::SetValueIndexed(index, FromGLenum<BlendFactorType>(dstAlpha), &mDstAlpha);
+    const gl::BlendFactorType srcColorFactor = FromGLenum<BlendFactorType>(srcColor);
+    const gl::BlendFactorType dstColorFactor = FromGLenum<BlendFactorType>(dstColor);
+    const gl::BlendFactorType srcAlphaFactor = FromGLenum<BlendFactorType>(srcAlpha);
+    const gl::BlendFactorType dstAlphaFactor = FromGLenum<BlendFactorType>(dstAlpha);
+
+    setFactorsIndexed(index, srcColorFactor, dstColorFactor, srcAlphaFactor, dstAlphaFactor);
 }
 
 void BlendStateExt::setFactorsIndexed(const size_t index,
@@ -599,38 +651,25 @@ void BlendStateExt::setFactorsIndexed(const size_t index,
 {
     ASSERT(index < mDrawBufferCount);
     ASSERT(sourceIndex < source.mDrawBufferCount);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mSrcColor), &mSrcColor);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mDstColor), &mDstColor);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mSrcAlpha), &mSrcAlpha);
-    FactorStorage::SetValueIndexed(
-        index, FactorStorage::GetValueIndexed(sourceIndex, source.mDstAlpha), &mDstAlpha);
-}
 
-GLenum BlendStateExt::getSrcColorIndexed(size_t index) const
-{
-    ASSERT(index < mDrawBufferCount);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mSrcColor));
-}
+    const gl::BlendFactorType srcColorFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mSrcColor);
+    const gl::BlendFactorType dstColorFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mDstColor);
+    const gl::BlendFactorType srcAlphaFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mSrcAlpha);
+    const gl::BlendFactorType dstAlphaFactor =
+        FactorStorage::GetValueIndexed(sourceIndex, source.mDstAlpha);
 
-GLenum BlendStateExt::getDstColorIndexed(size_t index) const
-{
-    ASSERT(index < mDrawBufferCount);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mDstColor));
-}
+    FactorStorage::SetValueIndexed(index, srcColorFactor, &mSrcColor);
+    FactorStorage::SetValueIndexed(index, dstColorFactor, &mDstColor);
+    FactorStorage::SetValueIndexed(index, srcAlphaFactor, &mSrcAlpha);
+    FactorStorage::SetValueIndexed(index, dstAlphaFactor, &mDstAlpha);
 
-GLenum BlendStateExt::getSrcAlphaIndexed(size_t index) const
-{
-    ASSERT(index < mDrawBufferCount);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mSrcAlpha));
-}
-
-GLenum BlendStateExt::getDstAlphaIndexed(size_t index) const
-{
-    ASSERT(index < mDrawBufferCount);
-    return ToGLenum(FactorStorage::GetValueIndexed(index, mDstAlpha));
+    const bool isExtended =
+        IsExtendedBlendFactor(srcColorFactor) || IsExtendedBlendFactor(dstColorFactor) ||
+        IsExtendedBlendFactor(srcAlphaFactor) || IsExtendedBlendFactor(dstAlphaFactor);
+    mUsesExtendedBlendFactorMask.set(index, isExtended);
 }
 
 DrawBufferMask BlendStateExt::compareFactors(const FactorStorage::Type srcColor,
@@ -839,6 +878,11 @@ void ExtendRectangle(const Rectangle &source, const Rectangle &extend, Rectangle
     extended->height = y1 - y0;
 }
 
+bool Box::valid() const
+{
+    return width != 0 && height != 0 && depth != 0;
+}
+
 bool Box::operator==(const Box &other) const
 {
     return (x == other.x && y == other.y && z == other.z && width == other.width &&
@@ -860,6 +904,87 @@ bool Box::coversSameExtent(const Extents &size) const
 {
     return x == 0 && y == 0 && z == 0 && width == size.width && height == size.height &&
            depth == size.depth;
+}
+
+bool Box::contains(const Box &other) const
+{
+    return x <= other.x && y <= other.y && z <= other.z && x + width >= other.x + other.width &&
+           y + height >= other.y + other.height && z + depth >= other.z + other.depth;
+}
+
+size_t Box::volume() const
+{
+    return width * height * depth;
+}
+
+void Box::extend(const Box &other)
+{
+    // This extends the logic of "ExtendRectangle" to 3 dimensions
+
+    int x0 = x;
+    int x1 = x + width;
+    int y0 = y;
+    int y1 = y + height;
+    int z0 = z;
+    int z1 = z + depth;
+
+    const int otherx0 = other.x;
+    const int otherx1 = other.x + other.width;
+    const int othery0 = other.y;
+    const int othery1 = other.y + other.height;
+    const int otherz0 = other.z;
+    const int otherz1 = other.z + other.depth;
+
+    // For each side of the box, calculate whether it can be extended by the other box.
+    // If so, extend it and continue to the next side with the new dimensions.
+
+    const bool enclosesWidth  = EnclosesRange(otherx0, otherx1, x0, x1);
+    const bool enclosesHeight = EnclosesRange(othery0, othery1, y0, y1);
+    const bool enclosesDepth  = EnclosesRange(otherz0, otherz1, z0, z1);
+
+    // Left: Reduce x0 if the other box's Y and Z plane encloses the source
+    if (otherx0 < x0 && otherx1 >= x0 && enclosesHeight && enclosesDepth)
+    {
+        x0 = otherx0;
+    }
+
+    // Right: Increase x1 simiarly.
+    if (otherx0 <= x1 && otherx1 > x1 && enclosesHeight && enclosesDepth)
+    {
+        x1 = otherx1;
+    }
+
+    // Bottom: Reduce y0 if the other box's X and Z plane encloses the source
+    if (othery0 < y0 && othery1 >= y0 && enclosesWidth && enclosesDepth)
+    {
+        y0 = othery0;
+    }
+
+    // Top: Increase y1 simiarly.
+    if (othery0 <= y1 && othery1 > y1 && enclosesWidth && enclosesDepth)
+    {
+        y1 = othery1;
+    }
+
+    // Front: Reduce z0 if the other box's X and Y plane encloses the source
+    if (otherz0 < z0 && otherz1 >= z0 && enclosesWidth && enclosesHeight)
+    {
+        z0 = otherz0;
+    }
+
+    // Back: Increase z1 simiarly.
+    if (otherz0 <= z1 && otherz1 > z1 && enclosesWidth && enclosesHeight)
+    {
+        z1 = otherz1;
+    }
+
+    // Update member var with new dimensions
+    x      = x0;
+    width  = x1 - x0;
+    y      = y0;
+    height = y1 - y0;
+    z      = z0;
+    depth  = z1 - z0;
 }
 
 bool operator==(const Offset &a, const Offset &b)
@@ -939,3 +1064,34 @@ GLsizeiptr GetBoundBufferAvailableSize(const OffsetBindingPointer<Buffer> &bindi
 }
 
 }  // namespace gl
+   //
+namespace angle
+{
+UnlockedTailCall::UnlockedTailCall() = default;
+
+UnlockedTailCall::~UnlockedTailCall()
+{
+    ASSERT(mCalls.empty());
+}
+
+void UnlockedTailCall::add(CallType &&call)
+{
+    mCalls.push_back(std::move(call));
+}
+
+void UnlockedTailCall::runImpl(void *resultOut)
+{
+    if (mCalls.empty())
+    {
+        return;
+    }
+    // Clear `mCalls` before calling, because Android sometimes calls back into ANGLE through EGL
+    // calls which don't expect there to be any pre-existing tail calls.
+    auto calls(std::move(mCalls));
+    ASSERT(mCalls.empty());
+    for (CallType &call : calls)
+    {
+        call(resultOut);
+    }
+}
+}  // namespace angle

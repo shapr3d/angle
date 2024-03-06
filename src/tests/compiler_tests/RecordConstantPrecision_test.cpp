@@ -17,7 +17,7 @@ using namespace sh;
 class RecordConstantPrecisionTest : public MatchOutputCodeTest
 {
   public:
-    RecordConstantPrecisionTest() : MatchOutputCodeTest(GL_FRAGMENT_SHADER, 0, SH_ESSL_OUTPUT) {}
+    RecordConstantPrecisionTest() : MatchOutputCodeTest(GL_FRAGMENT_SHADER, SH_ESSL_OUTPUT) {}
 };
 
 // The constant's precision must be specified if its precision is higher than the other operands,
@@ -141,11 +141,11 @@ TEST_F(RecordConstantPrecisionTest, HigherPrecisionConstantInIndex)
 uniform mediump float u;
 void main()
 {
-    const highp int a = 33000;
-    mediump float b[34000];
+    const highp int a = 330;
+    mediump float b[340];
     gl_FragColor = vec4(b[a]);
 })";
     compile(shaderString);
     ASSERT_FALSE(foundInCode("const highp int s"));
-    ASSERT_TRUE(foundInCode("b[33000]"));
+    ASSERT_TRUE(foundInCode("b[330]"));
 }

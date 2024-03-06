@@ -13,6 +13,8 @@
 #include "test_utils/draw_call_perf_utils.h"
 #include "util/shader_utils.h"
 
+using namespace angle;
+
 namespace
 {
 enum class StateChange
@@ -146,7 +148,17 @@ class DrawCallPerfBenchmark : public ANGLERenderTest,
     size_t mCurrentVBO = 0;
 };
 
-DrawCallPerfBenchmark::DrawCallPerfBenchmark() : ANGLERenderTest("DrawCallPerf", GetParam()) {}
+DrawCallPerfBenchmark::DrawCallPerfBenchmark() : ANGLERenderTest("DrawCallPerf", GetParam())
+{
+    const auto &params = GetParam();
+    if (IsPixel6() && params.eglParameters.renderer == EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE &&
+        params.surfaceType == SurfaceType::Offscreen &&
+        (params.stateChange == StateChange::VertexAttrib ||
+         params.stateChange == StateChange::Program))
+    {
+        skipTest("https://issuetracker.google.com/issues/298407224 Fails on Pixel 6 GLES");
+    }
+}
 
 void DrawCallPerfBenchmark::initializeBenchmark()
 {
@@ -647,7 +659,7 @@ using P = DrawArraysPerfParams;
 std::vector<P> gTestsWithStateChange =
     CombineWithValues({P()}, angle::AllEnums<StateChange>(), CombineStateChange);
 std::vector<P> gTestsWithRenderer =
-    CombineWithFuncs(gTestsWithStateChange, {D3D11<P>, GL<P>, Vulkan<P>, WGL<P>});
+    CombineWithFuncs(gTestsWithStateChange, {D3D11<P>, GL<P>, Metal<P>, Vulkan<P>, WGL<P>});
 std::vector<P> gTestsWithDevice =
     CombineWithFuncs(gTestsWithRenderer, {Passthrough<P>, Offscreen<P>, NullDevice<P>});
 

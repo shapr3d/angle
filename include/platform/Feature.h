@@ -13,11 +13,14 @@
 #include <string>
 #include <vector>
 
-#define ANGLE_FEATURE_CONDITION(set, feature, cond)       \
-    do                                                    \
-    {                                                     \
-        (set)->feature.enabled   = cond;                  \
-        (set)->feature.condition = ANGLE_STRINGIFY(cond); \
+#define ANGLE_FEATURE_CONDITION(set, feature, cond)           \
+    do                                                        \
+    {                                                         \
+        if (!(set)->feature.hasOverride)                      \
+        {                                                     \
+            (set)->feature.enabled   = cond;                  \
+            (set)->feature.condition = ANGLE_STRINGIFY(cond); \
+        }                                                     \
     } while (0)
 
 namespace angle
@@ -28,6 +31,7 @@ enum class FeatureCategory
     FrontendFeatures,
     FrontendWorkarounds,
     OpenGLWorkarounds,
+    OpenGLFeatures,
     D3DWorkarounds,
     VulkanFeatures,
     VulkanWorkarounds,
@@ -39,6 +43,7 @@ enum class FeatureCategory
 constexpr char kFeatureCategoryFrontendWorkarounds[]  = "Frontend workarounds";
 constexpr char kFeatureCategoryFrontendFeatures[]     = "Frontend features";
 constexpr char kFeatureCategoryOpenGLWorkarounds[]    = "OpenGL workarounds";
+constexpr char kFeatureCategoryOpenGLFeatures[]       = "OpenGL features";
 constexpr char kFeatureCategoryD3DWorkarounds[]       = "D3D workarounds";
 constexpr char kFeatureCategoryVulkanAppWorkarounds[] = "Vulkan app workarounds";
 constexpr char kFeatureCategoryVulkanWorkarounds[]    = "Vulkan workarounds";
@@ -61,6 +66,10 @@ inline const char *FeatureCategoryToString(const FeatureCategory &fc)
 
         case FeatureCategory::OpenGLWorkarounds:
             return kFeatureCategoryOpenGLWorkarounds;
+            break;
+
+        case FeatureCategory::OpenGLFeatures:
+            return kFeatureCategoryOpenGLFeatures;
             break;
 
         case FeatureCategory::D3DWorkarounds:
@@ -120,6 +129,8 @@ struct FeatureInfo
                 const char *bug);
     ~FeatureInfo();
 
+    void applyOverride(bool state);
+
     // The name of the workaround, lowercase, camel_case
     const char *const name;
 
@@ -136,7 +147,11 @@ struct FeatureInfo
     // version, but may be overriden to any value.
     bool enabled = false;
 
-    // A stingified version of the condition used to set 'enabled'. ie "IsNvidia() && IsApple()"
+    // Whether this feature has an override applied to it, and the condition to
+    // enable it should not be checked.
+    bool hasOverride = false;
+
+    // A stringified version of the condition used to set 'enabled'. ie "IsNvidia() && IsApple()"
     const char *condition;
 };
 
@@ -169,13 +184,14 @@ struct FeatureSetBase
 
   private:
     // Non-copyable
-    FeatureSetBase(const FeatureSetBase &other) = delete;
+    FeatureSetBase(const FeatureSetBase &other)            = delete;
     FeatureSetBase &operator=(const FeatureSetBase &other) = delete;
 
   protected:
     FeatureMap members = FeatureMap();
 
   public:
+    void reset();
     void overrideFeatures(const std::vector<std::string> &featureNames, bool enabled);
     void populateFeatureList(FeatureList *features) const;
 

@@ -5,7 +5,6 @@
 //
 #include "anglebase/numerics/safe_conversions.h"
 #include "common/mathutil.h"
-#include "platform/FeaturesVk_autogen.h"
 #include "test_utils/ANGLETest.h"
 #include "test_utils/gl_raii.h"
 #include "util/random_utils.h"
@@ -137,7 +136,7 @@ DestT Pack1010102(std::array<SrcT, 4> input)
     }
 }
 
-class VertexAttributeTest : public ANGLETest
+class VertexAttributeTest : public ANGLETest<>
 {
   protected:
     VertexAttributeTest() : mProgram(0), mTestAttrib(-1), mExpectedAttrib(-1), mBuffer(0)
@@ -929,6 +928,62 @@ TEST_P(VertexAttributeTest, UnsignedPacked1010102ExtensionNormalized)
     };
 }
 
+// Test that mixing array and current vertex attribute values works with the same matrix input
+TEST_P(VertexAttributeTest, MixedMatrixSources)
+{
+    constexpr char kVS[] = R"(
+attribute vec4 a_position;
+attribute mat4 a_matrix;
+varying vec4 v_color;
+void main() {
+    v_color = vec4(0.5, 0.25, 0.125, 0.0625) * a_matrix;
+    gl_Position = a_position;
+})";
+
+    constexpr char kFS[] = R"(
+precision mediump float;
+varying vec4 v_color;
+void main() {
+    gl_FragColor = v_color;
+})";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glBindAttribLocation(program, 0, "a_position");
+    glBindAttribLocation(program, 1, "a_matrix");
+    glLinkProgram(program);
+    glUseProgram(program);
+    ASSERT_GL_NO_ERROR();
+
+    GLBuffer buffer;
+    for (size_t i = 0; i < 4; ++i)
+    {
+        // Setup current attributes for all columns except one
+        for (size_t col = 0; col < 4; ++col)
+        {
+            GLfloat v[4] = {0.0, 0.0, 0.0, 0.0};
+            v[col]       = col == i ? 0.0 : 1.0;
+            glVertexAttrib4fv(1 + col, v);
+            glDisableVertexAttribArray(1 + col);
+        }
+
+        // Setup vertex array data for the i-th column
+        GLfloat data[16]{};
+        data[0 * 4 + i] = 1.0;
+        data[1 * 4 + i] = 1.0;
+        data[2 * 4 + i] = 1.0;
+        data[3 * 4 + i] = 1.0;
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STATIC_DRAW);
+        glVertexAttribPointer(1 + i, 4, GL_FLOAT, GL_FALSE, 0, reinterpret_cast<void *>(0));
+        glEnableVertexAttribArray(1 + i);
+        ASSERT_GL_NO_ERROR();
+
+        glClear(GL_COLOR_BUFFER_BIT);
+        drawIndexedQuad(program, "a_position", 0.0f, 1.0f, true);
+        EXPECT_PIXEL_COLOR_NEAR(0, 0, GLColor(128, 64, 32, 16), 1);
+    }
+}
+
 class VertexAttributeTestES3 : public VertexAttributeTest
 {
   protected:
@@ -1395,6 +1450,111 @@ TEST_P(VertexAttributeTest, DrawArraysWithUnalignedShortBufferOffset)
     EXPECT_GL_NO_ERROR();
 }
 
+// Verify that using a GL_FLOATx2 attribute with offset not divisible by 8 works.
+TEST_P(VertexAttributeTest, DrawArraysWith2FloatAtOffsetNotDivisbleBy8)
+{
+    initBasicProgram();
+    glUseProgram(mProgram);
+
+    // input data is GL_FLOATx2 (8 bytes) and stride=36
+    std::array<GLubyte, 36 * kVertexCount> inputData;
+    std::array<GLfloat, 2 * kVertexCount> expectedData;
+    for (size_t i = 0; i < kVertexCount; ++i)
+    {
+        expectedData[2 * i]     = 2 * i;
+        expectedData[2 * i + 1] = 2 * i + 1;
+
+        GLubyte *input = inputData.data() + 36 * i;
+        memcpy(input, &expectedData[2 * i], sizeof(float));
+        memcpy(input + sizeof(float), &expectedData[2 * i + 1], sizeof(float));
+    }
+
+    GLBuffer quadBuffer;
+    InitQuadPlusOneVertexBuffer(&quadBuffer);
+
+    GLint positionLocation = glGetAttribLocation(mProgram, "position");
+    ASSERT_NE(-1, positionLocation);
+    glVertexAttribPointer(positionLocation, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(positionLocation);
+
+    // offset is not float2 aligned (28)
+    GLsizei dataSize = 36 * kVertexCount + 28;
+    glBindBuffer(GL_ARRAY_BUFFER, mBuffer);
+    glBufferData(GL_ARRAY_BUFFER, dataSize, nullptr, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 28, dataSize - 28, inputData.data());
+    glVertexAttribPointer(mTestAttrib, 2, GL_FLOAT, GL_FALSE, /* stride */ 36,
+                          reinterpret_cast<void *>(28));
+    glEnableVertexAttribArray(mTestAttrib);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glVertexAttribPointer(mExpectedAttrib, 2, GL_FLOAT, GL_FALSE, 0, expectedData.data());
+    glEnableVertexAttribArray(mExpectedAttrib);
+
+    // Vertex draw with no start vertex offset (second argument is zero).
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    checkPixels();
+
+    // Draw offset by one vertex.
+    glDrawArrays(GL_TRIANGLES, 1, 6);
+    checkPixels();
+
+    EXPECT_GL_NO_ERROR();
+}
+
+// Verify that using offset=1 for GL_BYTE vertex attribute doesn't mess up the draw.
+// Depending on backend, offset=1 for GL_BYTE could be natively supported or not.
+// In the latter case, a vertex data conversion will have to be performed.
+TEST_P(VertexAttributeTest, DrawArraysWithByteAtOffset1)
+{
+    initBasicProgram();
+    glUseProgram(mProgram);
+
+    // input data is GL_BYTEx3 (3 bytes) but stride=4
+    std::array<GLbyte, 4 * kVertexCount> inputData;
+    std::array<GLfloat, 3 * kVertexCount> expectedData;
+    for (size_t i = 0; i < kVertexCount; ++i)
+    {
+        inputData[4 * i]     = 3 * i;
+        inputData[4 * i + 1] = 3 * i + 1;
+        inputData[4 * i + 2] = 3 * i + 2;
+
+        expectedData[3 * i]     = 3 * i;
+        expectedData[3 * i + 1] = 3 * i + 1;
+        expectedData[3 * i + 2] = 3 * i + 2;
+    }
+
+    GLBuffer quadBuffer;
+    InitQuadPlusOneVertexBuffer(&quadBuffer);
+
+    GLint positionLocation = glGetAttribLocation(mProgram, "position");
+    ASSERT_NE(-1, positionLocation);
+    glVertexAttribPointer(positionLocation, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(positionLocation);
+
+    // Buffer offset (1)
+    GLsizei dataSize = 4 * kVertexCount + 1;
+    glBindBuffer(GL_ARRAY_BUFFER, mBuffer);
+    glBufferData(GL_ARRAY_BUFFER, dataSize, nullptr, GL_STATIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 1, dataSize - 1, inputData.data());
+    glVertexAttribPointer(mTestAttrib, 3, GL_BYTE, GL_FALSE, /* stride */ 4,
+                          reinterpret_cast<void *>(1));
+    glEnableVertexAttribArray(mTestAttrib);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glVertexAttribPointer(mExpectedAttrib, 3, GL_FLOAT, GL_FALSE, 0, expectedData.data());
+    glEnableVertexAttribArray(mExpectedAttrib);
+
+    // Vertex draw with no start vertex offset (second argument is zero).
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    checkPixels();
+
+    // Draw offset by one vertex.
+    glDrawArrays(GL_TRIANGLES, 1, 6);
+    checkPixels();
+
+    EXPECT_GL_NO_ERROR();
+}
+
 // Verify that using an aligned but non-multiples of 4 offset vertex attribute doesn't mess up the
 // draw.
 TEST_P(VertexAttributeTest, DrawArraysWithShortBufferOffsetNotMultipleOf4)
@@ -1593,7 +1753,7 @@ TEST_P(VertexAttributeTest, DrawArraysWithDisabledAttribute)
 TEST_P(VertexAttributeTest, DisabledAttribArrays)
 {
     // Known failure on Retina MBP: http://crbug.com/635081
-    ANGLE_SKIP_TEST_IF(IsOSX() && IsNVIDIA());
+    ANGLE_SKIP_TEST_IF(IsMac() && IsNVIDIA());
 
     constexpr char kVS[] =
         "attribute vec4 a_position;\n"
@@ -1641,7 +1801,7 @@ TEST_P(VertexAttributeTest, DrawWithLargeBufferOffset)
     std::array<GLbyte, kQuadVertexCount> validInputData = {{0, 1, 2, 3}};
 
     // 4 components
-    std::array<GLbyte, 4 *kQuadVertexCount + kBufferOffset> inputData = {};
+    std::array<GLbyte, 4 * kQuadVertexCount + kBufferOffset> inputData = {};
 
     std::array<GLfloat, 4 * kQuadVertexCount> expectedData;
     for (size_t i = 0; i < kQuadVertexCount; i++)
@@ -1725,17 +1885,14 @@ void main()
 // GL_RG32_SNORM_ANGLEX is used when using glVertexAttribPointer with certain parameters.
 TEST_P(VertexAttributeTestES3, DrawWithUnalignedData)
 {
-    // http://anglebug.com/7068
-    ANGLE_SKIP_TEST_IF(IsOSX());
-
     constexpr char kVS[] = R"(#version 300 es
 precision highp float;
 in highp vec4 a_position;
-in highp ivec2 a_ColorTest;
+in highp vec2 a_ColorTest;
 out highp vec2 v_colorTest;
 
 void main() {
-    v_colorTest = vec2(a_ColorTest);
+    v_colorTest = a_ColorTest;
     gl_Position = a_position;
 })";
 
@@ -1745,7 +1902,8 @@ in highp vec2 v_colorTest;
 out vec4 fragColor;
 
 void main() {
-    if(v_colorTest.x > 0.5) {
+    // The input value is 0x01000000 / 0x7FFFFFFF
+    if(abs(v_colorTest.x - 0.0078125) < 0.001) {
         fragColor = vec4(0.0, 1.0, 0.0, 1.0);
     } else {
         fragColor = vec4(1.0, 0.0, 0.0, 1.0);
@@ -1848,8 +2006,7 @@ void main() {
     };
     // clang-format on
 
-    GLuint buffer;
-    glGenBuffers(1, &buffer);
+    GLBuffer buffer;
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
     glBufferData(GL_ARRAY_BUFFER, sizeof(GLuint) * kDataSize, kColorTestData, GL_STATIC_DRAW);
 
@@ -2132,6 +2289,11 @@ class VertexAttributeTestES31 : public VertexAttributeTestES3
         EXPECT_GL_NO_ERROR();
     }
 
+    std::string makeMismatchingSignsTestVS(uint32_t attribCount, uint16_t signedMask);
+    std::string makeMismatchingSignsTestFS(uint32_t attribCount);
+    uint16_t setupVertexAttribPointersForMismatchSignsTest(uint16_t currentSignedMask,
+                                                           uint16_t toggleMask);
+
     GLuint mVAO            = 0;
     GLuint mExpectedBuffer = 0;
     GLuint mQuadBuffer     = 0;
@@ -2198,7 +2360,7 @@ layout(local_size_x=1) in;
 void main()
 {
 })";
-    ANGLE_GL_COMPUTE_PROGRAM(computePogram, kComputeShader);
+    ANGLE_GL_COMPUTE_PROGRAM(computeProgram, kComputeShader);
 
     glViewport(0, 0, getWindowWidth(), getWindowHeight());
     glClearColor(0, 0, 0, 0);
@@ -2302,13 +2464,13 @@ void main() {
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, kInstanceCount);
 
         EXPECT_GL_NO_ERROR();
-        EXPECT_PIXEL_COLOR_EQ(0, getWindowHeight() / 2, GLColor::red);
-        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::green);
-        EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::blue);
-        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, 0, GLColor::yellow);
+        EXPECT_PIXEL_COLOR_EQ(0, getWindowHeight() / 2, GLColor::red) << i;
+        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::green) << i;
+        EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::blue) << i;
+        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, 0, GLColor::yellow) << i;
 
         glBindVertexArray(vao[1]);
-        glUseProgram(computePogram.get());
+        glUseProgram(computeProgram.get());
         glDispatchCompute(1, 1, 1);
 
         glUseProgram(renderProgram1.get());
@@ -2316,11 +2478,12 @@ void main() {
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, kInstanceCount);
 
         EXPECT_GL_NO_ERROR();
-        EXPECT_PIXEL_COLOR_EQ(0, getWindowHeight() / 2, GLColor::yellow);
-        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::blue);
-        EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green);
-        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, 0, GLColor::red);
+        EXPECT_PIXEL_COLOR_EQ(0, getWindowHeight() / 2, GLColor::yellow) << i;
+        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::blue) << i;
+        EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::green) << i;
+        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, 0, GLColor::red) << i;
     }
+    ASSERT_GL_NO_ERROR();
 }
 
 TEST_P(VertexAttributeTestES31, UseComputeShaderToUpdateVertexBuffer)
@@ -3388,6 +3551,281 @@ void main()
     EXPECT_EQ(expectedColors, actualColors);
 }
 
+std::string VertexAttributeTestES31::makeMismatchingSignsTestVS(uint32_t attribCount,
+                                                                uint16_t signedMask)
+{
+    std::ostringstream shader;
+
+    shader << R"(#version 310 es
+precision highp float;
+
+// The signedness is determined by |signedMask|.
+)";
+
+    for (uint32_t i = 0; i < attribCount; ++i)
+    {
+        shader << "in highp " << ((signedMask >> i & 1) == 0 ? "u" : "i") << "vec4 attrib" << i
+               << ";\n";
+    }
+
+    shader << "flat out highp uvec4 v[" << attribCount << "];\n";
+
+    shader << R"(
+void main() {
+)";
+
+    for (uint32_t i = 0; i < attribCount; ++i)
+    {
+        shader << "v[" << i << "] = uvec4(attrib" << i << ");\n";
+    }
+
+    shader << R"(
+    // gl_VertexID    x    y
+    //      0        -1   -1
+    //      1         1   -1
+    //      2        -1    1
+    //      3         1    1
+    int bit0 = gl_VertexID & 1;
+    int bit1 = gl_VertexID >> 1;
+    gl_Position = vec4(bit0 * 2 - 1, bit1 * 2 - 1, gl_VertexID % 2 == 0 ? -1 : 1, 1);
+})";
+
+    return shader.str();
+}
+
+std::string VertexAttributeTestES31::makeMismatchingSignsTestFS(uint32_t attribCount)
+{
+    std::ostringstream shader;
+
+    shader << R"(#version 310 es
+precision highp float;
+)";
+
+    shader << "flat in highp uvec4 v[" << attribCount << "];\n";
+
+    shader << R"(out vec4 fragColor;
+uniform vec4 colorScale;
+
+bool isOk(uvec4 inputVarying, uint index)
+{
+    return inputVarying.x == index &&
+        inputVarying.y == index * 2u &&
+        inputVarying.z == index + 1u &&
+        inputVarying.w == index + 0x12345u;
+}
+
+void main()
+{
+    bool result = true;
+)";
+    shader << "    for (uint index = 0u; index < " << attribCount << "u; ++index)\n";
+    shader << R"({
+        result = result && isOk(v[index], index);
+    }
+
+    fragColor = vec4(result) * colorScale;
+})";
+
+    return shader.str();
+}
+
+uint16_t VertexAttributeTestES31::setupVertexAttribPointersForMismatchSignsTest(
+    uint16_t currentSignedMask,
+    uint16_t toggleMask)
+{
+    uint16_t newSignedMask = currentSignedMask ^ toggleMask;
+
+    for (uint32_t i = 0; i < 16; ++i)
+    {
+        if ((toggleMask >> i & 1) == 0)
+        {
+            continue;
+        }
+
+        const GLenum type = (newSignedMask >> i & 1) == 0 ? GL_UNSIGNED_INT : GL_INT;
+        glVertexAttribIPointer(i, 4, type, sizeof(GLuint[4]),
+                               reinterpret_cast<const void *>(sizeof(GLuint[4][4]) * i));
+    }
+
+    return newSignedMask;
+}
+
+// Test changing between matching and mismatching signedness of vertex attributes, when the
+// attribute changes type.
+TEST_P(VertexAttributeTestES31, MismatchingSignsChangingAttributeType)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_ANGLE_relaxed_vertex_attribute_type"));
+
+    // GL supports a minimum of 16 vertex attributes, and gl_VertexID is counted as one.
+    // The signedness pattern used here is:
+    //
+    //   0                14
+    //   iiui uuii iuui uui
+    //
+    // Which is chosen such that there's no clear repeating / mirror pattern.
+    const std::string vs = makeMismatchingSignsTestVS(15, 0x49CB);
+    const std::string fs = makeMismatchingSignsTestFS(15);
+
+    ANGLE_GL_PROGRAM(program, vs.c_str(), fs.c_str());
+    for (uint32_t i = 0; i < 15; ++i)
+    {
+        char attribName[20];
+        snprintf(attribName, sizeof(attribName), "attrib%u\n", i);
+        glBindAttribLocation(program, i, attribName);
+    }
+    glLinkProgram(program);
+    glUseProgram(program);
+    ASSERT_GL_NO_ERROR();
+
+    GLint colorScaleLoc = glGetUniformLocation(program, "colorScale");
+    ASSERT_NE(-1, colorScaleLoc);
+
+    GLuint data[15][4][4];
+    for (GLuint i = 0; i < 15; ++i)
+    {
+        for (GLuint j = 0; j < 4; ++j)
+        {
+            // Match the expectation in the shader
+            data[i][j][0] = i;
+            data[i][j][1] = i * 2;
+            data[i][j][2] = i + 1;
+            data[i][j][3] = i + 0x12345;
+        }
+    }
+
+    GLBuffer buffer;
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STATIC_DRAW);
+
+    // Randomly match and mismatch the component type
+    uint16_t signedMask = setupVertexAttribPointersForMismatchSignsTest(0x0FA5, 0x7FFF);
+
+    for (uint32_t i = 0; i < 15; ++i)
+    {
+        glEnableVertexAttribArray(i);
+    }
+
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+
+    glUniform4f(colorScaleLoc, 1, 0, 0, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // Modify the attributes randomly and make sure tests still pass
+
+    signedMask = setupVertexAttribPointersForMismatchSignsTest(signedMask, 0x3572);
+    glUniform4f(colorScaleLoc, 0, 1, 0, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    signedMask = setupVertexAttribPointersForMismatchSignsTest(signedMask, 0x4B1C);
+    glUniform4f(colorScaleLoc, 0, 0, 1, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    signedMask = setupVertexAttribPointersForMismatchSignsTest(signedMask, 0x19D6);
+    glUniform4f(colorScaleLoc, 0, 0, 0, 1);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // All channels must be 1
+    EXPECT_PIXEL_RECT_EQ(0, 0, getWindowWidth(), getWindowHeight(), GLColor::white);
+    ASSERT_GL_NO_ERROR();
+}
+
+// Test changing between matching and mismatching signedness of vertex attributes, when the
+// program itself changes the type.
+TEST_P(VertexAttributeTestES31, MismatchingSignsChangingProgramType)
+{
+    ANGLE_SKIP_TEST_IF(!IsGLExtensionEnabled("GL_ANGLE_relaxed_vertex_attribute_type"));
+
+    // GL supports a minimum of 16 vertex attributes, and gl_VertexID is counted as one.
+    constexpr uint32_t kAttribCount[4]      = {12, 9, 15, 7};
+    constexpr uint32_t kAttribSignedMask[4] = {0x94f, 0x6A, 0x765B, 0x29};
+
+    GLProgram programs[4];
+
+    for (uint32_t progIndex = 0; progIndex < 4; ++progIndex)
+    {
+        const std::string vs =
+            makeMismatchingSignsTestVS(kAttribCount[progIndex], kAttribSignedMask[progIndex]);
+        const std::string fs = makeMismatchingSignsTestFS(kAttribCount[progIndex]);
+
+        programs[progIndex].makeRaster(vs.c_str(), fs.c_str());
+        for (uint32_t i = 0; i < kAttribCount[progIndex]; ++i)
+        {
+            char attribName[20];
+            snprintf(attribName, sizeof(attribName), "attrib%u\n", i);
+            glBindAttribLocation(programs[progIndex], i, attribName);
+        }
+        glLinkProgram(programs[progIndex]);
+        glUseProgram(programs[progIndex]);
+        ASSERT_GL_NO_ERROR();
+    }
+
+    GLuint data[15][4][4];
+    for (GLuint i = 0; i < 15; ++i)
+    {
+        for (GLuint j = 0; j < 4; ++j)
+        {
+            // Match the expectation in the shader
+            data[i][j][0] = i;
+            data[i][j][1] = i * 2;
+            data[i][j][2] = i + 1;
+            data[i][j][3] = i + 0x12345;
+        }
+    }
+
+    GLBuffer buffer;
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(data), data, GL_STATIC_DRAW);
+
+    // Randomly match and mismatch the component type
+    setupVertexAttribPointersForMismatchSignsTest(0x55F8, 0x7FFF);
+
+    for (uint32_t i = 0; i < 15; ++i)
+    {
+        glEnableVertexAttribArray(i);
+    }
+
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+
+    glUseProgram(programs[0]);
+    GLint colorScaleLoc = glGetUniformLocation(programs[0], "colorScale");
+    ASSERT_NE(-1, colorScaleLoc);
+    glUniform4f(colorScaleLoc, 1, 0, 0, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // Change the program, which have randomly different attribute component types and make sure
+    // tests still pass
+
+    glUseProgram(programs[1]);
+    colorScaleLoc = glGetUniformLocation(programs[1], "colorScale");
+    ASSERT_NE(-1, colorScaleLoc);
+    glUniform4f(colorScaleLoc, 0, 1, 0, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    glUseProgram(programs[2]);
+    colorScaleLoc = glGetUniformLocation(programs[2], "colorScale");
+    ASSERT_NE(-1, colorScaleLoc);
+    glUniform4f(colorScaleLoc, 0, 0, 1, 0);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    glUseProgram(programs[3]);
+    colorScaleLoc = glGetUniformLocation(programs[3], "colorScale");
+    ASSERT_NE(-1, colorScaleLoc);
+    glUniform4f(colorScaleLoc, 0, 0, 0, 1);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // All channels must be 1
+    EXPECT_PIXEL_RECT_EQ(0, 0, getWindowWidth(), getWindowHeight(), GLColor::white);
+    ASSERT_GL_NO_ERROR();
+}
+
 // Test that aliasing attribute locations work with es 100 shaders.  Note that es 300 and above
 // don't allow vertex attribute aliasing.  This test excludes matrix types.
 TEST_P(VertexAttributeTest, AliasingVectorAttribLocations)
@@ -3396,13 +3834,19 @@ TEST_P(VertexAttributeTest, AliasingVectorAttribLocations)
     ANGLE_SKIP_TEST_IF(IsAndroid() && IsOpenGL());
 
     // http://anglebug.com/3466
-    ANGLE_SKIP_TEST_IF(IsOSX() && IsOpenGL());
+    ANGLE_SKIP_TEST_IF(IsMac() && IsOpenGL());
 
     // http://anglebug.com/3467
     ANGLE_SKIP_TEST_IF(IsD3D());
 
     // TODO(anglebug.com/5491): iOS GLSL compiler rejects attribute aliasing.
     ANGLE_SKIP_TEST_IF(IsIOS() && IsOpenGLES());
+
+    // This test needs 10 total attributes. All backends support this except some old Android
+    // devices.
+    GLint maxVertexAttribs = 0;
+    glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &maxVertexAttribs);
+    ANGLE_SKIP_TEST_IF(maxVertexAttribs < 10);
 
     constexpr char kVS[] = R"(attribute vec4 position;
 // 4 aliasing attributes
@@ -3556,13 +4000,19 @@ TEST_P(VertexAttributeTest, AliasingMatrixAttribLocations)
     ANGLE_SKIP_TEST_IF(IsAndroid() && IsOpenGL());
 
     // http://anglebug.com/3466
-    ANGLE_SKIP_TEST_IF(IsOSX() && IsOpenGL());
+    ANGLE_SKIP_TEST_IF(IsMac() && IsOpenGL());
 
     // http://anglebug.com/3467
     ANGLE_SKIP_TEST_IF(IsD3D());
 
     // TODO(anglebug.com/5491): iOS GLSL compiler rejects attribute aliasing.
     ANGLE_SKIP_TEST_IF(IsIOS() && IsOpenGLES());
+
+    // This test needs 16 total attributes. All backends support this except some old Android
+    // devices.
+    GLint maxVertexAttribs = 0;
+    glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &maxVertexAttribs);
+    ANGLE_SKIP_TEST_IF(maxVertexAttribs < 16);
 
     constexpr char kVS[] = R"(attribute vec4 position;
 // attributes aliasing location 0 and above
@@ -3790,7 +4240,7 @@ TEST_P(VertexAttributeTest, AliasingVectorAttribLocationsDifferingPrecisions)
     ANGLE_SKIP_TEST_IF(IsAndroid() && IsOpenGL());
 
     // http://anglebug.com/3466
-    ANGLE_SKIP_TEST_IF(IsOSX() && IsOpenGL());
+    ANGLE_SKIP_TEST_IF(IsMac() && IsOpenGL());
 
     // http://anglebug.com/3467
     ANGLE_SKIP_TEST_IF(IsD3D());
@@ -4002,6 +4452,119 @@ void main()
     EXPECT_PIXEL_RECT_EQ(0, 0, getWindowWidth(), getWindowHeight(), GLColor::green);
 }
 
+// Test that vertex conversion correctly no-ops when the vertex format requires conversion but there
+// are no vertices to convert.
+TEST_P(VertexAttributeTest, ConversionWithNoVertices)
+{
+    constexpr char kVS[] = R"(precision highp float;
+attribute vec3 attr1;
+void main(void) {
+   gl_Position = vec4(attr1, 1.0);
+})";
+
+    constexpr char kFS[] = R"(precision highp float;
+void main(void) {
+   gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+})";
+
+    GLBuffer buffer;
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    std::array<int8_t, 12> data = {
+        1,
+    };
+    glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(data[0]), data.data(), GL_STATIC_DRAW);
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glBindAttribLocation(program, 0, "attr1");
+    glLinkProgram(program);
+    ASSERT_TRUE(CheckLinkStatusAndReturnProgram(program, true));
+    glUseProgram(program);
+
+    // Set the offset the athe attribute past the end of the buffer but use a format that requires
+    // conversion in Vulkan
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_BYTE, true, 128, reinterpret_cast<void *>(256));
+
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    EXPECT_GL_NO_ERROR();
+}
+
+// Test that pipeline is recreated properly when switching from ARRAY buffer to client buffer,
+// while removing client buffer. Bug observed in Dragonmania game.
+TEST_P(VertexAttributeTestES31, ArrayToClientBufferStride)
+{
+    constexpr char kVS[] = R"(#version 310 es
+precision highp float;
+in vec4 in_pos;
+in vec4 in_color;
+out vec4 color;
+void main(void) {
+   gl_Position = in_pos;
+   color = in_color;
+})";
+
+    constexpr char kFS[] = R"(#version 310 es
+precision highp float;
+in vec4 color;
+out vec4 frag_color;
+void main(void) {
+   frag_color = color;
+})";
+    swapBuffers();
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    glUseProgram(program);
+    GLint posLoc   = glGetAttribLocation(program, "in_pos");
+    GLint colorLoc = glGetAttribLocation(program, "in_color");
+    ASSERT_NE(posLoc, -1);
+    ASSERT_NE(colorLoc, -1);
+
+    const std::array<Vector3, 6> &quadVerts = GetQuadVertices();
+    // Data for packed attributes.
+    std::array<float, ((3 + 4) * 6)> data;
+
+    float kYellow[4] = {1.0f, 1.0f, 0.0f, 1.0f};
+    float kGreen[4]  = {0.0f, 1.0f, 0.0f, 1.0f};
+
+    for (int i = 0; i < 6; i++)
+    {
+        memcpy(&data[i * (3 + 4)], &quadVerts[i], sizeof(Vector3));
+        memcpy(&data[i * (3 + 4) + 3], &kYellow, 4 * sizeof(float));
+    }
+
+    {
+        GLBuffer buffer;
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+        glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(data[0]), data.data(), GL_STATIC_DRAW);
+
+        glEnableVertexAttribArray(posLoc);
+        glEnableVertexAttribArray(colorLoc);
+
+        glVertexAttribPointer(posLoc, 3, GL_FLOAT, false, 28, reinterpret_cast<void *>(0));
+        glVertexAttribPointer(colorLoc, 4, GL_FLOAT, false, 28, reinterpret_cast<void *>(12));
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        EXPECT_PIXEL_RECT_EQ(0, 0, getWindowWidth(), getWindowHeight(), GLColor::yellow);
+        EXPECT_GL_NO_ERROR();
+        // Unbind before destroy.
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    // Modify color to green.
+    for (int i = 0; i < 6; i++)
+    {
+        memcpy(&data[i * (3 + 4) + 3], &kGreen, 4 * sizeof(float));
+    }
+
+    // Provide client pointer.
+    glVertexAttribPointer(posLoc, 3, GL_FLOAT, false, 28, data.data());
+    glVertexAttribPointer(colorLoc, 4, GL_FLOAT, false, 28, &data[3]);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    EXPECT_PIXEL_RECT_EQ(0, 0, getWindowWidth(), getWindowHeight(), GLColor::green);
+    EXPECT_GL_NO_ERROR();
+}
+
 // Create a vertex array with an empty array buffer and attribute offsets.
 // This succeded in the end2end and capture/replay tests, but resulted in a trace
 // producing a GL error when using MEC.
@@ -4088,6 +4651,125 @@ TEST_P(VertexAttributeTestES3, InvalidAttribPointer)
     glEnableVertexAttribArray(0);
 }
 
+// Test maxinum attribs full of Client buffers and then switch to mixed.
+TEST_P(VertexAttributeTestES3, fullClientBuffersSwitchToMixed)
+{
+    GLint maxAttribs;
+    glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &maxAttribs);
+    ASSERT_GL_NO_ERROR();
+
+    // Reserve one attrib for position
+    GLint drawAttribs = maxAttribs - 1;
+
+    GLuint program = compileMultiAttribProgram(drawAttribs);
+    ASSERT_NE(0u, program);
+
+    const std::array<Vector2, 4> kIndexedQuadVertices = {{
+        Vector2(-1.0f, 1.0f),
+        Vector2(-1.0f, -1.0f),
+        Vector2(1.0f, -1.0f),
+        Vector2(1.0f, 1.0f),
+    }};
+
+    GLsizei stride = (maxAttribs + 1) * sizeof(GLfloat);
+
+    constexpr std::array<GLushort, 6> kIndexedQuadIndices = {{0, 1, 2, 0, 2, 3}};
+    GLuint indexBuffer                                    = 0;
+    glGenBuffers(1, &indexBuffer);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(kIndexedQuadIndices), kIndexedQuadIndices.data(),
+                 GL_STATIC_DRAW);
+
+    // Vertex drawAttribs color attributes plus position (x, y).
+    GLint totalComponents = drawAttribs + 2;
+    std::vector<GLfloat> vertexData(totalComponents * 4, 0.0f);
+    for (GLint index = 0; index < 4; ++index)
+    {
+        vertexData[index * totalComponents + drawAttribs]     = kIndexedQuadVertices[index].x();
+        vertexData[index * totalComponents + drawAttribs + 1] = kIndexedQuadVertices[index].y();
+    }
+
+    GLfloat attributeValue = 0.0f;
+    GLfloat delta          = 1.0f / 256.0f;
+    for (GLint attribIndex = 0; attribIndex < drawAttribs; ++attribIndex)
+    {
+        vertexData[attribIndex]                       = attributeValue;
+        vertexData[attribIndex + totalComponents]     = attributeValue;
+        vertexData[attribIndex + totalComponents * 2] = attributeValue;
+        vertexData[attribIndex + totalComponents * 3] = attributeValue;
+        attributeValue += delta;
+    }
+
+    glUseProgram(program);
+    for (GLint attribIndex = 0; attribIndex < drawAttribs; ++attribIndex)
+    {
+        std::stringstream attribStream;
+        attribStream << "a" << attribIndex;
+        GLint location = glGetAttribLocation(program, attribStream.str().c_str());
+        ASSERT_NE(-1, location);
+        glVertexAttribPointer(location, 1, GL_FLOAT, GL_FALSE, stride,
+                              vertexData.data() + attribIndex);
+        glEnableVertexAttribArray(location);
+    }
+    GLint posLoc = glGetAttribLocation(program, "position");
+    ASSERT_NE(-1, posLoc);
+    glEnableVertexAttribArray(posLoc);
+    glVertexAttribPointer(posLoc, 2, GL_FLOAT, GL_FALSE, stride, vertexData.data() + drawAttribs);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
+
+    // the result color should be (0 + 1 + 2 + ... + 14)/256 * 255;
+    EXPECT_GL_NO_ERROR();
+    EXPECT_PIXEL_NEAR(0, 0, 105, 0, 0, 255, 1);
+
+    // disable a few attribute use default attribute color
+    GLint l0  = glGetAttribLocation(program, "a0");
+    GLint l5  = glGetAttribLocation(program, "a5");
+    GLint l13 = glGetAttribLocation(program, "a13");
+    glDisableVertexAttribArray(l0);
+    glVertexAttrib1f(l0, 1.0f / 16.0f);
+    glDisableVertexAttribArray(l5);
+    glVertexAttrib1f(l5, 1.0f / 16.0f);
+    glDisableVertexAttribArray(l13);
+    glVertexAttrib1f(l13, 1.0f / 16.0f);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
+
+    EXPECT_GL_NO_ERROR();
+    EXPECT_PIXEL_NEAR(0, 0, 134, 0, 0, 255, 1);
+
+    // disable all the client buffers.
+    for (GLint attribIndex = 0; attribIndex < drawAttribs; ++attribIndex)
+    {
+        std::stringstream attribStream;
+        attribStream << "a" << attribIndex;
+        GLint location = glGetAttribLocation(program, attribStream.str().c_str());
+        ASSERT_NE(-1, location);
+        glDisableVertexAttribArray(location);
+        glVertexAttrib1f(location, 1.0f / 16.0f);
+    }
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
+
+    EXPECT_GL_NO_ERROR();
+    EXPECT_PIXEL_NEAR(0, 0, 239, 0, 0, 255, 1);
+
+    // enable all the client buffers.
+    for (GLint attribIndex = 0; attribIndex < drawAttribs; ++attribIndex)
+    {
+        std::stringstream attribStream;
+        attribStream << "a" << attribIndex;
+        GLint location = glGetAttribLocation(program, attribStream.str().c_str());
+        ASSERT_NE(-1, location);
+        glVertexAttribPointer(location, 1, GL_FLOAT, GL_FALSE, stride,
+                              vertexData.data() + attribIndex);
+        glEnableVertexAttribArray(location);
+    }
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
+    EXPECT_GL_NO_ERROR();
+    EXPECT_PIXEL_NEAR(0, 0, 105, 0, 0, 255, 1);
+}
+
 // Test bind an empty buffer for vertex attribute does not crash
 TEST_P(VertexAttributeTestES3, emptyBuffer)
 {
@@ -4107,8 +4789,7 @@ TEST_P(VertexAttributeTestES3, emptyBuffer)
                 color = vec4(1.0, 0.0, 0.0, 1.0);
             })";
     GLuint program2 = CompileProgram(vs2, fs);
-    GLuint buf;
-    glGenBuffers(1, &buf);
+    GLBuffer buf;
     glBindBuffer(GL_ARRAY_BUFFER, buf);
     glEnableVertexAttribArray(0);
     glVertexAttribIPointer(0, 4, GL_UNSIGNED_BYTE, 0, 0);
@@ -4117,6 +4798,87 @@ TEST_P(VertexAttributeTestES3, emptyBuffer)
     glDrawArrays(GL_POINTS, 0, 1);
 
     swapBuffers();
+}
+
+// This is a test for use with ANGLE's Capture/Replay.
+// It emulates a situation we see in some apps, where attribs are passed in but may not be used.
+// In particular, that test asks for all active attributes and iterates through each one. Before any
+// changes to FrameCapture, this will create calls that look up attributes that are considered
+// unused on some platforms, making the trace non-portable. Whether they are used depends on how
+// well the stack optimizes the shader pipeline. In this instance, we are just passing them across
+// the pipeline boundary where they are dead in the fragment shader, but other cases have included
+// attributes passed to empty functions, or some eliminated with math. The more optimizations
+// applied by the driver, the higher chance of getting an unused attribute.
+TEST_P(VertexAttributeTestES3, UnusedAttribsMEC)
+{
+    constexpr char vertexShader[] =
+        R"(#version 300 es
+        precision mediump float;
+        in vec4 position;
+        in vec4 input_unused;
+        out vec4 passthrough;
+        void main()
+        {
+            passthrough = input_unused;
+            gl_Position = position;
+        })";
+
+    constexpr char fragmentShader[] =
+        R"(#version 300 es
+        precision mediump float;
+        in vec4 passthrough;
+        out vec4 color;
+        void main()
+        {
+            // ignore passthrough - this makes it unused with cross stage optimizations
+            color = vec4(1.0);
+        })";
+
+    GLuint program = CompileProgram(vertexShader, fragmentShader);
+    glUseProgram(program);
+
+    // Set up vertex data
+    GLBuffer positionBuffer;
+    const std::array<Vector3, 6> &quadVerts = GetQuadVertices();
+    glBindBuffer(GL_ARRAY_BUFFER, positionBuffer);
+    glBufferData(GL_ARRAY_BUFFER, quadVerts.size() * sizeof(quadVerts[0]), quadVerts.data(),
+                 GL_STATIC_DRAW);
+
+    // Loop through a sequence multiple times, so MEC can capture it.
+    // Ask about vertex attribs and set them up, regardless of whether they are used.
+    // This matches behavior seen in some apps.
+    for (int i = 0; i < 10; i++)
+    {
+        // Look up the number of attribs
+        GLint activeAttribCount = 0;
+        glGetProgramiv(program, GL_ACTIVE_ATTRIBUTES, &activeAttribCount);
+
+        // Look up how big they might get
+        GLint maxActiveAttribLength = 0;
+        glGetProgramiv(program, GL_ACTIVE_ATTRIBUTE_MAX_LENGTH, &maxActiveAttribLength);
+
+        GLsizei attribLength  = 0;
+        GLint attribSize      = 0;
+        GLenum attribType     = 0;
+        GLchar attribName[16] = {0};
+        ASSERT(maxActiveAttribLength < 16);
+
+        // Look up each attribute and set them up
+        for (int j = 0; j < activeAttribCount; j++)
+        {
+            glGetActiveAttrib(program, j, maxActiveAttribLength, &attribLength, &attribSize,
+                              &attribType, attribName);
+            GLint posLoc = glGetAttribLocation(program, attribName);
+            ASSERT_NE(posLoc, -1);
+            glVertexAttribPointer(posLoc, 3, GL_FLOAT, GL_FALSE, j, nullptr);
+            glEnableVertexAttribArray(posLoc);
+        }
+
+        // Draw and swap on each loop to trigger MEC
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        EXPECT_PIXEL_COLOR_EQ(getWindowWidth() / 2, getWindowHeight() / 2, GLColor::white);
+        swapBuffers();
+    }
 }
 
 // VAO emulation fails on Mac but is not used on Mac in the wild. http://anglebug.com/5577
@@ -4138,6 +4900,8 @@ ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND(
     ES3_VULKAN_SWIFTSHADER().enable(Feature::ForceFallbackFormat),
     ES3_METAL().disable(Feature::HasExplicitMemBarrier).disable(Feature::HasCheapRenderPass),
     ES3_METAL().disable(Feature::HasExplicitMemBarrier).enable(Feature::HasCheapRenderPass),
+    ES2_OPENGL().enable(Feature::ForceMinimumMaxVertexAttributes),
+    ES2_OPENGLES().enable(Feature::ForceMinimumMaxVertexAttributes),
     EMULATED_VAO_CONFIGS);
 
 ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND(
@@ -4155,12 +4919,18 @@ ANGLE_INSTANTIATE_TEST_ES3_AND(
     ES3_VULKAN().enable(Feature::ForceFallbackFormat),
     ES3_VULKAN_SWIFTSHADER().enable(Feature::ForceFallbackFormat),
     ES3_METAL().disable(Feature::HasExplicitMemBarrier).disable(Feature::HasCheapRenderPass),
-    ES3_METAL().disable(Feature::HasExplicitMemBarrier).enable(Feature::HasCheapRenderPass));
+    ES3_METAL().disable(Feature::HasExplicitMemBarrier).enable(Feature::HasCheapRenderPass),
+    ES3_VULKAN()
+        .disable(Feature::UseVertexInputBindingStrideDynamicState)
+        .disable(Feature::SupportsGraphicsPipelineLibrary));
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(VertexAttributeTestES31);
 ANGLE_INSTANTIATE_TEST_ES31_AND(VertexAttributeTestES31,
                                 ES31_VULKAN().enable(Feature::ForceFallbackFormat),
-                                ES31_VULKAN_SWIFTSHADER().enable(Feature::ForceFallbackFormat));
+                                ES31_VULKAN_SWIFTSHADER().enable(Feature::ForceFallbackFormat),
+                                ES31_VULKAN()
+                                    .disable(Feature::UseVertexInputBindingStrideDynamicState)
+                                    .disable(Feature::SupportsGraphicsPipelineLibrary));
 
 ANGLE_INSTANTIATE_TEST_ES2_AND_ES3_AND(
     VertexAttributeCachingTest,

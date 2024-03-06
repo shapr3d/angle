@@ -5,8 +5,20 @@
 import("//build_overrides/swiftshader.gni")
 import("../../../gni/angle.gni")
 
+if (angle_use_wayland) {
+  import("//build_overrides/wayland.gni")
+}
+
 declare_args() {
   angle_use_custom_libvulkan = !is_android && !is_fuchsia && !is_ggp
+
+  # On real CrOS devices, we should use the system Vulkan loader. On the
+  # ChromeOS-for-Linux build, we should use the built libvulkan because the
+  # build is used for MSAN tests. Mixing the non-MSAN system libvulkan with the
+  # MSAN ANGLE build can result in false positives.
+  if (is_chromeos && is_chromeos_device) {
+    angle_use_custom_libvulkan = false
+  }
 }
 
 config("angle_libvulkan_config") {
@@ -30,16 +42,13 @@ if (angle_enable_vulkan || angle_build_vulkan_system_info) {
       defines = [ "ANGLE_SHARED_LIBVULKAN=1" ]
     }
     if (angle_use_wayland) {
-      include_dirs = [ "$angle_wayland_dir/src" ]
+      include_dirs = [ "$wayland_dir/src" ]
     }
     configs = [ "$angle_root:angle_vulkan_wayland_config" ]
   }
 
   angle_source_set("angle_vulkan_headers") {
-    sources = [
-      "vk_google_filtering_precision.h",
-      "vk_headers.h",
-    ]
+    sources = [ "vk_headers.h" ]
     if (angle_shared_libvulkan) {
       public_deps = [ "$angle_root/src/third_party/volk:volk" ]
     } else {
