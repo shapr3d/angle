@@ -32,6 +32,25 @@ egl::Error ExternalImageSiblingImpl11::initialize(const egl::Display *display)
     ANGLE_TRY(mRenderer->getD3DTextureInfo(nullptr, static_cast<IUnknown *>(mBuffer), mAttribs,
                                            &mWidth, &mHeight, &mSamples, &mFormat, &angleFormat,
                                            &mArraySlice));
+
+    // For TYPELESS DXGI formats, EGL_GL_COLORSPACE_SRGB selects the sRGB sibling format so the
+    // downstream SRV/RTV and TextureStorage11 all carry the sRGB DXGI variant. Mirrors the
+    // EGL_ANGLE_d3d_texture_client_buffer pbuffer behavior in SurfaceD3D for the eglCreateImage
+    // (EGL_D3D11_TEXTURE_ANGLE) path.
+    if (mAttribs.get(EGL_GL_COLORSPACE, EGL_GL_COLORSPACE_LINEAR) == EGL_GL_COLORSPACE_SRGB)
+    {
+        if (angleFormat->id == angle::FormatID::R8G8B8A8_TYPELESS)
+        {
+            angleFormat = &angle::Format::Get(angle::FormatID::R8G8B8A8_TYPELESS_SRGB);
+            mFormat     = gl::Format(angleFormat->glInternalFormat);
+        }
+        else if (angleFormat->id == angle::FormatID::B8G8R8A8_TYPELESS)
+        {
+            angleFormat = &angle::Format::Get(angle::FormatID::B8G8R8A8_TYPELESS_SRGB);
+            mFormat     = gl::Format(angleFormat->glInternalFormat);
+        }
+    }
+
     ID3D11Texture2D *texture =
         d3d11::DynamicCastComObject<ID3D11Texture2D>(static_cast<IUnknown *>(mBuffer));
     ASSERT(texture != nullptr);
