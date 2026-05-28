@@ -1411,6 +1411,11 @@ void Renderer11::generateDisplayExtensions(egl::DisplayExtensions *outExtensions
     outExtensions->glTextureCubemapImage = true;
     outExtensions->glRenderbufferImage   = true;
 
+    // EGL_KHR_gl_colorspace lets eglCreateImage's per-attribute validation accept
+    // EGL_GL_COLORSPACE. Needed for selecting sRGB sibling format on typeless D3D11 textures
+    // imported via EGL_D3D11_TEXTURE_ANGLE.
+    outExtensions->glColorspace = true;
+
     outExtensions->stream                     = true;
     outExtensions->streamConsumerGLTexture    = true;
     outExtensions->streamConsumerGLTextureYUV = true;
