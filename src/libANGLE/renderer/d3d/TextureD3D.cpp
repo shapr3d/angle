@@ -1436,17 +1436,23 @@ angle::Result TextureD3D_2D::releaseTexImage(const gl::Context *context)
 
 angle::Result TextureD3D_2D::setEGLImageTarget(const gl::Context *context,
                                                gl::TextureType type,
+                                               GLuint levels,
                                                egl::Image *image)
 {
     EGLImageD3D *eglImaged3d = GetImplAs<EGLImageD3D>(image);
 
-    // Set the properties of the base mip level from the EGL image
+    // Mirror the per-level setup that setStorage() performs so that mImageArray reflects every
+    // mip level the EGLImage actually owns. Necessary for glEGLImageTargetTexStorageEXT to expose
+    // a full mip chain; the legacy OES single-level entry simply passes levels = 1.
     const auto &format = image->getFormat();
-    gl::Extents size(static_cast<int>(image->getWidth()), static_cast<int>(image->getHeight()), 1);
-    ANGLE_TRY(redefineImage(context, 0, format.info->sizedInternalFormat, size, true));
-
-    // Clear all other images.
-    for (size_t level = 1; level < mImageArray.size(); level++)
+    const int baseWidth  = static_cast<int>(image->getWidth());
+    const int baseHeight = static_cast<int>(image->getHeight());
+    for (size_t level = 0; level < levels; level++)
+    {
+        gl::Extents levelSize(std::max(1, baseWidth >> level), std::max(1, baseHeight >> level), 1);
+        ANGLE_TRY(redefineImage(context, level, format.info->sizedInternalFormat, levelSize, true));
+    }
+    for (size_t level = levels; level < mImageArray.size(); level++)
     {
         ANGLE_TRY(redefineImage(context, level, GL_NONE, gl::Extents(0, 0, 1), true));
     }
@@ -1458,8 +1464,8 @@ angle::Result TextureD3D_2D::setEGLImageTarget(const gl::Context *context,
     RenderTargetD3D *renderTargetD3D = nullptr;
     ANGLE_TRY(eglImaged3d->getRenderTarget(context, &renderTargetD3D));
 
-    mTexStorage =
-        mRenderer->createTextureStorageEGLImage(eglImaged3d, renderTargetD3D, mState.getLabel());
+    mTexStorage = mRenderer->createTextureStorageEGLImage(eglImaged3d, renderTargetD3D, levels,
+                                                          mState.getLabel());
     mEGLImageTarget = true;
 
     return angle::Result::Continue;
@@ -1818,6 +1824,7 @@ bool TextureD3D_Cube::isSRGB(GLint level, GLint layer) const
 
 angle::Result TextureD3D_Cube::setEGLImageTarget(const gl::Context *context,
                                                  gl::TextureType type,
+                                                 GLuint /*levels*/,
                                                  egl::Image *image)
 {
     ANGLE_HR_UNREACHABLE(GetImplAs<ContextD3D>(context));
@@ -2570,6 +2577,7 @@ bool TextureD3D_3D::isSRGB(GLint level) const
 
 angle::Result TextureD3D_3D::setEGLImageTarget(const gl::Context *context,
                                                gl::TextureType type,
+                                               GLuint /*levels*/,
                                                egl::Image *image)
 {
     ANGLE_HR_UNREACHABLE(GetImplAs<ContextD3D>(context));
@@ -3249,6 +3257,7 @@ bool TextureD3D_2DArray::isSRGB(GLint level) const
 
 angle::Result TextureD3D_2DArray::setEGLImageTarget(const gl::Context *context,
                                                     gl::TextureType type,
+                                                    GLuint /*levels*/,
                                                     egl::Image *image)
 {
     ANGLE_HR_UNREACHABLE(GetImplAs<ContextD3D>(context));
@@ -4102,6 +4111,7 @@ angle::Result TextureD3D_External::setImageExternal(const gl::Context *context,
 
 angle::Result TextureD3D_External::setEGLImageTarget(const gl::Context *context,
                                                      gl::TextureType type,
+                                                     GLuint levels,
                                                      egl::Image *image)
 {
     EGLImageD3D *eglImaged3d = GetImplAs<EGLImageD3D>(image);
@@ -4111,8 +4121,8 @@ angle::Result TextureD3D_External::setEGLImageTarget(const gl::Context *context,
     ANGLE_TRY(eglImaged3d->getRenderTarget(context, &renderTargetD3D));
 
     ANGLE_TRY(releaseTexStorage(context, gl::TexLevelMask()));
-    mTexStorage =
-        mRenderer->createTextureStorageEGLImage(eglImaged3d, renderTargetD3D, mState.getLabel());
+    mTexStorage = mRenderer->createTextureStorageEGLImage(eglImaged3d, renderTargetD3D, levels,
+                                                          mState.getLabel());
 
     return angle::Result::Continue;
 }
@@ -4223,6 +4233,7 @@ angle::Result TextureD3D_2DMultisample::setStorageMultisample(const gl::Context 
 
 angle::Result TextureD3D_2DMultisample::setEGLImageTarget(const gl::Context *context,
                                                           gl::TextureType type,
+                                                          GLuint /*levels*/,
                                                           egl::Image *image)
 {
     ANGLE_HR_UNREACHABLE(GetImplAs<ContextD3D>(context));
@@ -4343,6 +4354,7 @@ angle::Result TextureD3D_2DMultisampleArray::setStorageMultisample(const gl::Con
 
 angle::Result TextureD3D_2DMultisampleArray::setEGLImageTarget(const gl::Context *context,
                                                                gl::TextureType type,
+                                                               GLuint /*levels*/,
                                                                egl::Image *image)
 {
     ANGLE_HR_UNREACHABLE(GetImplAs<ContextD3D>(context));
@@ -4589,6 +4601,7 @@ void TextureD3D_Buffer::markAllImagesDirty()
 
 angle::Result TextureD3D_Buffer::setEGLImageTarget(const gl::Context *context,
                                                    gl::TextureType type,
+                                                   GLuint /*levels*/,
                                                    egl::Image *image)
 {
     ANGLE_HR_UNREACHABLE(GetImplAs<ContextD3D>(context));

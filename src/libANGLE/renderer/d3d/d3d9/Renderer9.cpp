@@ -2925,6 +2925,7 @@ TextureStorage *Renderer9::createTextureStorage2D(SwapChainD3D *swapChain, const
 
 TextureStorage *Renderer9::createTextureStorageEGLImage(EGLImageD3D *eglImage,
                                                         RenderTargetD3D *renderTargetD3D,
+                                                        GLuint /*levels*/,
                                                         const std::string &label)
 {
     return new TextureStorage9_EGLImage(this, eglImage, GetAs<RenderTarget9>(renderTargetD3D),

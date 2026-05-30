@@ -243,6 +243,7 @@ class Renderer11 : public RendererD3D
                                            const std::string &label) override;
     TextureStorage *createTextureStorageEGLImage(EGLImageD3D *eglImage,
                                                  RenderTargetD3D *renderTargetD3D,
+                                                 GLuint levels,
                                                  const std::string &label) override;
     TextureStorage *createTextureStorageExternal(egl::Stream *stream,
                                                  const egl::Stream::GLTextureDescription &desc,

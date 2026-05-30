@@ -58,6 +58,8 @@ egl::Error ExternalImageSiblingImpl11::initialize(const egl::Display *display)
     D3D11_TEXTURE2D_DESC textureDesc = {};
     texture->GetDesc(&textureDesc);
 
+    mMipLevels = textureDesc.MipLevels;
+
     if (d3d11::IsSupportedMultiplanarFormat(textureDesc.Format))
     {
         if (!mAttribs.contains(EGL_D3D11_TEXTURE_PLANE_ANGLE))
@@ -132,6 +134,11 @@ gl::Extents ExternalImageSiblingImpl11::getSize() const
 size_t ExternalImageSiblingImpl11::getSamples() const
 {
     return mSamples;
+}
+
+uint32_t ExternalImageSiblingImpl11::getLevelCount() const
+{
+    return mMipLevels;
 }
 
 angle::Result ExternalImageSiblingImpl11::getAttachmentRenderTarget(

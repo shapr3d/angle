@@ -123,6 +123,7 @@ class TextureMtl : public TextureImpl
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result setImageExternal(const gl::Context *context,

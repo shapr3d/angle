@@ -1916,6 +1916,7 @@ angle::Result TextureStorage11ImmutableBase::createUAVForImage(const gl::Context
 TextureStorage11_EGLImage::TextureStorage11_EGLImage(Renderer11 *renderer,
                                                      EGLImageD3D *eglImage,
                                                      RenderTarget11 *renderTarget11,
+                                                     GLuint levels,
                                                      const std::string &label)
     : TextureStorage11ImmutableBase(renderer,
                                     D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
@@ -1930,7 +1931,7 @@ TextureStorage11_EGLImage::TextureStorage11_EGLImage(Renderer11 *renderer,
 {
     mCurrentRenderTarget = reinterpret_cast<uintptr_t>(renderTarget11);
 
-    mMipLevels     = 1;
+    mMipLevels     = levels;
     mTextureWidth  = renderTarget11->getWidth();
     mTextureHeight = renderTarget11->getHeight();
     mTextureDepth  = 1;
@@ -2124,36 +2125,21 @@ angle::Result TextureStorage11_EGLImage::createSRVForSampler(const gl::Context *
                                                              const TextureHelper11 &texture,
                                                              d3d11::SharedSRV *outSRV)
 {
-    ASSERT(baseLevel == 0);
-    ASSERT(mipLevels == 1);
     ASSERT(outSRV);
 
-    // Create a new SRV only for the swizzle texture.  Otherwise just return the Image's
-    // RenderTarget's SRV.
-    if (texture == mSwizzleTexture)
-    {
-        D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-        srvDesc.Format                    = format;
-        srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MostDetailedMip = mTopLevel + baseLevel;
-        srvDesc.Texture2D.MipLevels       = mipLevels;
+    // Build a fresh SRV over the requested mip range. The underlying TextureHelper11 (from either
+    // the EGLImage's render target or the swizzle texture) carries the full mip chain, so we can
+    // honor baseLevel/mipLevels directly. Previously this path reused the RenderTarget's
+    // single-level SRV, which forced sampling to level 0 only.
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+    srvDesc.Format                    = format;
+    srvDesc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MostDetailedMip = mTopLevel + baseLevel;
+    srvDesc.Texture2D.MipLevels       = mipLevels;
 
-        ANGLE_TRY(mRenderer->allocateResource(GetImplAs<Context11>(context), srvDesc, texture.get(),
-                                              outSRV));
-        outSRV->setLabels("TexStorageEGLImage.SRV", &mKHRDebugLabel);
-    }
-    else
-    {
-        RenderTarget11 *renderTarget = nullptr;
-        ANGLE_TRY(getImageRenderTarget(context, &renderTarget));
-
-        ASSERT(texture == renderTarget->getTexture());
-
-        const d3d11::SharedSRV *srv;
-        ANGLE_TRY(renderTarget->getShaderResourceView(context, &srv));
-
-        *outSRV = srv->makeCopy();
-    }
+    ANGLE_TRY(mRenderer->allocateResource(GetImplAs<Context11>(context), srvDesc, texture.get(),
+                                          outSRV));
+    outSRV->setLabels("TexStorageEGLImage.SRV", &mKHRDebugLabel);
 
     return angle::Result::Continue;
 }

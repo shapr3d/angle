@@ -1952,7 +1952,7 @@ angle::Result Texture::setEGLImageTargetImpl(Context *context,
                              initState);
     mState.mHasProtectedContent = imageTarget->hasProtectedContent();
 
-    ANGLE_TRY(mTexture->setEGLImageTarget(context, type, imageTarget));
+    ANGLE_TRY(mTexture->setEGLImageTarget(context, type, levels, imageTarget));
 
     signalDirtyStorage(initState);
 

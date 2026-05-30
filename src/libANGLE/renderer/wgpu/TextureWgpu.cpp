@@ -174,6 +174,7 @@ angle::Result TextureWgpu::setStorageExternalMemory(const gl::Context *context,
 
 angle::Result TextureWgpu::setEGLImageTarget(const gl::Context *context,
                                              gl::TextureType type,
+                                             GLuint /*levels*/,
                                              egl::Image *image)
 {
     return angle::Result::Continue;

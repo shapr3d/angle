@@ -194,6 +194,7 @@ class TextureImpl : public FramebufferAttachmentObjectImpl
 
     virtual angle::Result setEGLImageTarget(const gl::Context *context,
                                             gl::TextureType type,
+                                            GLuint levels,
                                             egl::Image *image) = 0;
 
     virtual angle::Result setImageExternal(const gl::Context *context,

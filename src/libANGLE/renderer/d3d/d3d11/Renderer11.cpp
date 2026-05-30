@@ -3438,10 +3438,11 @@ TextureStorage *Renderer11::createTextureStorage2D(SwapChainD3D *swapChain,
 
 TextureStorage *Renderer11::createTextureStorageEGLImage(EGLImageD3D *eglImage,
                                                          RenderTargetD3D *renderTargetD3D,
+                                                         GLuint levels,
                                                          const std::string &label)
 {
     return new TextureStorage11_EGLImage(this, eglImage, GetAs<RenderTarget11>(renderTargetD3D),
-                                         label);
+                                         levels, label);
 }
 
 TextureStorage *Renderer11::createTextureStorageExternal(
