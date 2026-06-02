@@ -497,6 +497,7 @@ class TextureStorage11_EGLImage final : public TextureStorage11ImmutableBase
     TextureStorage11_EGLImage(Renderer11 *renderer,
                               EGLImageD3D *eglImage,
                               RenderTarget11 *renderTarget11,
+                              GLuint levels,
                               const std::string &label);
     ~TextureStorage11_EGLImage() override;
 

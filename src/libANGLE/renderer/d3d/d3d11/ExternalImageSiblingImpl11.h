@@ -33,6 +33,7 @@ class ExternalImageSiblingImpl11 : public ExternalImageSiblingImpl
     bool hasProtectedContent() const override;
     gl::Extents getSize() const override;
     size_t getSamples() const override;
+    uint32_t getLevelCount() const override;
 
     // FramebufferAttachmentObjectImpl interface
     angle::Result getAttachmentRenderTarget(const gl::Context *context,
@@ -61,6 +62,7 @@ class ExternalImageSiblingImpl11 : public ExternalImageSiblingImpl
     EGLint mHeight       = 0;
     GLsizei mSamples     = 0;
     UINT mArraySlice     = 0;
+    UINT mMipLevels      = 1;
 
     std::unique_ptr<RenderTargetD3D> mRenderTarget;
 };

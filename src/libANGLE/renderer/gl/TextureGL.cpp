@@ -1496,6 +1496,7 @@ angle::Result TextureGL::releaseTexImage(const gl::Context *context)
 
 angle::Result TextureGL::setEGLImageTarget(const gl::Context *context,
                                            gl::TextureType type,
+                                           GLuint /*levels*/,
                                            egl::Image *image)
 {
     const angle::FeaturesGL &features = GetFeaturesGL(context);

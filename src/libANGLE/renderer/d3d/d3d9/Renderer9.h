@@ -280,6 +280,7 @@ class Renderer9 : public RendererD3D
                                            const std::string &label) override;
     TextureStorage *createTextureStorageEGLImage(EGLImageD3D *eglImage,
                                                  RenderTargetD3D *renderTargetD3D,
+                                                 GLuint levels,
                                                  const std::string &label) override;
 
     TextureStorage *createTextureStorageBuffer(const gl::OffsetBindingPointer<gl::Buffer> &buffer,

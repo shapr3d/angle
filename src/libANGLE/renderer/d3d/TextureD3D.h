@@ -314,6 +314,7 @@ class TextureD3D_2D : public TextureD3D
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
@@ -445,6 +446,7 @@ class TextureD3D_Cube : public TextureD3D
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
@@ -579,6 +581,7 @@ class TextureD3D_3D : public TextureD3D
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
@@ -710,6 +713,7 @@ class TextureD3D_2DArray : public TextureD3D
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
@@ -828,6 +832,7 @@ class TextureD3D_External : public TextureD3DImmutableBase
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
@@ -871,6 +876,7 @@ class TextureD3D_2DMultisample : public TextureD3DImmutableBase
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
@@ -917,6 +923,7 @@ class TextureD3D_2DMultisampleArray : public TextureD3DImmutableBase
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
@@ -1009,6 +1016,7 @@ class TextureD3D_Buffer : public TextureD3D
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     angle::Result getRenderTarget(const gl::Context *context,
