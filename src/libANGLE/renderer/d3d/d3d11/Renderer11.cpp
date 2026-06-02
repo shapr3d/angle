@@ -1411,6 +1411,11 @@ void Renderer11::generateDisplayExtensions(egl::DisplayExtensions *outExtensions
     outExtensions->glTextureCubemapImage = true;
     outExtensions->glRenderbufferImage   = true;
 
+    // EGL_KHR_gl_colorspace lets eglCreateImage's per-attribute validation accept
+    // EGL_GL_COLORSPACE. Needed for selecting sRGB sibling format on typeless D3D11 textures
+    // imported via EGL_D3D11_TEXTURE_ANGLE.
+    outExtensions->glColorspace = true;
+
     outExtensions->stream                     = true;
     outExtensions->streamConsumerGLTexture    = true;
     outExtensions->streamConsumerGLTextureYUV = true;
@@ -1640,7 +1645,9 @@ egl::Error Renderer11::getD3DTextureInfo(const egl::Config *configuration,
             case DXGI_FORMAT_R32G32B32A32_FLOAT:
             case DXGI_FORMAT_R10G10B10A2_UNORM:
             case DXGI_FORMAT_R8_UNORM:
+            case DXGI_FORMAT_R8_TYPELESS:
             case DXGI_FORMAT_R8G8_UNORM:
+            case DXGI_FORMAT_R8G8_TYPELESS:
             case DXGI_FORMAT_R16_UNORM:
             case DXGI_FORMAT_R16G16_UNORM:
                 break;
@@ -3431,10 +3438,11 @@ TextureStorage *Renderer11::createTextureStorage2D(SwapChainD3D *swapChain,
 
 TextureStorage *Renderer11::createTextureStorageEGLImage(EGLImageD3D *eglImage,
                                                          RenderTargetD3D *renderTargetD3D,
+                                                         GLuint levels,
                                                          const std::string &label)
 {
     return new TextureStorage11_EGLImage(this, eglImage, GetAs<RenderTarget11>(renderTargetD3D),
-                                         label);
+                                         levels, label);
 }
 
 TextureStorage *Renderer11::createTextureStorageExternal(

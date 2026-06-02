@@ -470,7 +470,7 @@ const Format &GetFormat(DXGI_FORMAT dxgiFormat)
         case DXGI_FORMAT_R8G8_SNORM:
             return Format::Get(FormatID::R8G8_SNORM);
         case DXGI_FORMAT_R8G8_TYPELESS:
-            break;
+            return Format::Get(FormatID::R8G8_UNORM);
         case DXGI_FORMAT_R8G8_UINT:
             return Format::Get(FormatID::R8G8_UINT);
         case DXGI_FORMAT_R8G8_UNORM:
@@ -480,7 +480,7 @@ const Format &GetFormat(DXGI_FORMAT dxgiFormat)
         case DXGI_FORMAT_R8_SNORM:
             return Format::Get(FormatID::R8_SNORM);
         case DXGI_FORMAT_R8_TYPELESS:
-            break;
+            return Format::Get(FormatID::R8_UNORM);
         case DXGI_FORMAT_R8_UINT:
             return Format::Get(FormatID::R8_UINT);
         case DXGI_FORMAT_R8_UNORM:

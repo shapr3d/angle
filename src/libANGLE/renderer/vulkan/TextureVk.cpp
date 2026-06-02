@@ -1809,6 +1809,7 @@ void TextureVk::handleImmutableSamplerTransition(const vk::ImageHelper *previous
 
 angle::Result TextureVk::setEGLImageTarget(const gl::Context *context,
                                            gl::TextureType type,
+                                           GLuint /*levels*/,
                                            egl::Image *image)
 {
     ContextVk *contextVk = vk::GetImpl(context);

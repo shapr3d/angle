@@ -1286,6 +1286,7 @@ angle::Result TextureMtl::setStorageMultisample(const gl::Context *context,
 
 angle::Result TextureMtl::setEGLImageTarget(const gl::Context *context,
                                             gl::TextureType type,
+                                            GLuint /*levels*/,
                                             egl::Image *image)
 {
     releaseTexture(true);

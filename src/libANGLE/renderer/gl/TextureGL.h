@@ -184,6 +184,7 @@ class TextureGL : public TextureImpl
 
     angle::Result setEGLImageTarget(const gl::Context *context,
                                     gl::TextureType type,
+                                    GLuint levels,
                                     egl::Image *image) override;
 
     GLint getNativeID() const override;
