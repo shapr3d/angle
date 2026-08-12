@@ -1138,8 +1138,16 @@ void Context11::handleResult(HRESULT hr,
 
     if (d3d11::isDeviceLostError(hr))
     {
-        HRESULT removalReason = mRenderer->getDevice()->GetDeviceRemovedReason();
-        errorStream << " (removal reason: " << gl::FmtHR(removalReason) << ")";
+        ID3D11Device *device = mRenderer->getDevice();
+        if (device != nullptr)
+        {
+            errorStream << " (removal reason: " << gl::FmtHR(device->GetDeviceRemovedReason())
+                        << ")";
+        }
+        else
+        {
+            errorStream << " (device already released)";
+        }
         mRenderer->notifyDeviceLost();
     }
 

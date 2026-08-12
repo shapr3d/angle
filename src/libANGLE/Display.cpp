@@ -1756,7 +1756,16 @@ Error Display::restoreLostDevice()
         }
     }
 
-    return mImplementation->restoreLostDevice(this);
+    Error error = mImplementation->restoreLostDevice(this);
+    if (error.isError())
+    {
+        // A failed restore may leave the backend without a device at all.
+        // Mark the contexts lost so that subsequent GL calls are rejected
+        // instead of reaching a renderer that no longer has a device to work with.
+        notifyDeviceLost();
+    }
+
+    return error;
 }
 
 Error Display::destroySurfaceImpl(Surface *surface, SurfaceMap *surfaces)
