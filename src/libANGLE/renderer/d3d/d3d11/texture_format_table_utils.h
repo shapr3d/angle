@@ -48,6 +48,7 @@ inline bool SupportsFormat(DXGI_FORMAT format, const Renderer11DeviceCaps &devic
         // RGBA4, RGB5A1 and RGB565 are all required multisampled renderbuffer formats in ES3 and
         // need to support a minimum of 4 samples.
         minimumRequiredSamples = 4;
+        mustSupport |= D3D11_FORMAT_SUPPORT_MULTISAMPLE_RENDERTARGET;
     }
 
     bool fullSupport = false;
